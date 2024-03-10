@@ -410,7 +410,7 @@ void Test_FindNearestPointsinAdaptiveGridMap4x4(const cv::Size& ImageSize, const
     std::cout << "Test_FindNearestPointsinAdaptiveGridMap4x4\n";
 
     cv::Point PointSrc; // cv::Point Index
-    RectPoints GridRectMap;
+    RectPoints GridRectMap, GridRectMapAdaptive;
 
     cv::Point2f CorrectedPoint; // Grid Index
     
@@ -431,7 +431,7 @@ void Test_FindNearestPointsinAdaptiveGridMap4x4(const cv::Size& ImageSize, const
             if (y > 5 && x > 5) {
                 if (!findGridPointValue(GDC_Adaptive_Grid_Points, PointSrc, CorrectedPoint)) {
 
-                    if (getTileRectMap4x4(PointSrc, ImageSize, GridSize, GDC_Adaptive_Grid_Points, GridRectMap)) {
+                    if (getTileRectMap4x4(PointSrc, ImageSize, GridSize, GDC_Adaptive_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
                         
                         Scalar Color(Rndm.uniform(0, 255), Rndm.uniform(0, 255), Rndm.uniform(0, 255));
 
@@ -445,6 +445,15 @@ void Test_FindNearestPointsinAdaptiveGridMap4x4(const cv::Size& ImageSize, const
                             for (size_t j = 0; j < 4; j++)
                             {
                                 circle(Image, GridRectMap.cornersPoint[i][j], 2, Color1, 2);
+                            }
+                        }
+
+                        for (size_t i = 0; i < 4; i++)
+                        {
+                            for (size_t j = 0; j < 4; j++)
+                            {
+                                if(GridRectMapAdaptive.cornersIdx[i][j])
+                                    circle(Image, GridRectMapAdaptive.cornersPoint[i][j], 2, Scalar(0,255,0), 2);
                             }
                         }
 
@@ -553,7 +562,7 @@ int main() {
     std::cout << "Total No of Points \t Fixed Grid : " << Total_points_FixedGrid
         << " \t Variable Grid : " << Total_points_VariableGrid
         << " : Saved : " << Points_Diff << " Points (" << Saved_Percentage << "%)" << std::endl;
-#if 1
+#if 0
 
     /*std::map<cv::Point, cv::Point2f, PointCompare> GDC_mFixed_Grid_Points;
 
@@ -580,7 +589,7 @@ int main() {
     //displayAndSaveImage(distortedImage_GT, "1_Distorted Image");
     //imwrite("2_Magnitude of Distortion.png", distortionMagnitude * 255);
 
-#if 0
+#if 1
 
     Mat Map_x_FG, Map_y_FG;
 
@@ -604,7 +613,7 @@ int main() {
 
     rms_error_AdaptiveGrid = distorter.compareDistortionMaps(Map_x, Map_y, Map_x_AG, Map_y_AG, "GT vs Adaptive Grid");
 
-    //displayAndSaveImage(distortedImage_AdaptiveGrid, "3_Distorted Image Adaptive Grid");
+    displayAndSaveImage(distortedImage_AdaptiveGrid, "3_Distorted Image Adaptive Grid");
 
     // Calculate and print results for Fixed Grid
     double psnr_fixed = getPSNR(distortedImage_GT, distortedImage_FixedGrid);

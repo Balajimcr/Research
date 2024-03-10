@@ -3,16 +3,27 @@
 
 #include <opencv2/opencv.hpp>
 
-// Struct to represent a 2x2 array of 4 rectangle corners 
+template <typename T>
+const T& clamp(const T& v, const T& lo, const T& hi) {
+    return std::max(lo, std::min(v, hi));
+}
+
+// Struct to represent a 2x2 or 4x4 array of rectangles
 struct RectPoints {
-    cv::Point   cornersPoint[4][4];
-    cv::Point2f cornersMap[4][4];
-    int cornersIdx[4][4];
+    cv::Point   cornersPoint[4][4];  // Image Point Index
+    cv::Point2f cornersMap[4][4];    // Distorsion Map Value
+    int cornersIdx[4][4];            // Grid Map Index
     // For Billinear
     // Top-Left     -  00
     // Top-Right    -  01
     // Bottom-Left  -  10
     // Bottom-Right -  11
+
+    // For Bicubic
+    // Top-Left     -  00
+    // Top-Right    -  03
+    // Bottom-Left  -  30
+    // Bottom-Right -  33
 };
 
 
@@ -29,7 +40,7 @@ void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<c
 
 bool findGridPointValue(const std::map<cv::Point, cv::Point2f, PointCompare>& gridPoints, const cv::Point& searchPoint, cv::Point2f& outCorrectedPoint);
 bool getTileRectMap(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, RectPoints& cellRect);
-bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, RectPoints& cellRect);
+bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, RectPoints& cellRect, RectPoints& cellRectAdaptive);
 bool getTileRectMapFixed(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, std::map<cv::Point, cv::Point2f, PointCompare> GDC_Fixed_Grid_Points, RectPoints& cellRect);
 // ![get-psnr]
 static double getPSNR(const cv::Mat& I1, const cv::Mat& I2)
