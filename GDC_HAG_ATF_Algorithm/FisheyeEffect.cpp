@@ -534,7 +534,7 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
                 cv::Point AdaptiveGridPoint = cv::Point((gridPointIdx.x * cellWidth), gridPointIdx.y * cellHeight) + cv::Point(cellWidth / 2, 0);
 
                 // Find the Adaptive point in GDC_Adaptive_Grid_Points
-                if (findGridPointValue(GDC_Adaptive_Grid_Points, AdaptiveGridPoint, cellRect.cornersMap[i + 1][j + 1])) {
+                if (findGridPointValue(GDC_Adaptive_Grid_Points, AdaptiveGridPoint, cellRectAdaptive.cornersMap[i + 1][j + 1])) {
                     cellRectAdaptive.cornersPoint[i + 1][j + 1] = AdaptiveGridPoint;
                     cellRectAdaptive.cornersIdx[i + 1][j + 1] = 1;
                 }
@@ -592,19 +592,22 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
 std::vector<float> calculateCubicCoefficients(const std::vector<cv::Point2f>& points) {
     CV_Assert(points.size() == 4); // Ensure there are exactly 4 points
 
-    cv::Mat A = cv::Mat::zeros(4, 4, CV_32F);
-    cv::Mat b = cv::Mat::zeros(4, 1, CV_32F);
-    cv::Mat x = cv::Mat::zeros(4, 1, CV_32F); // This will hold the coefficients
+    // Directly initialize A and b with their values
+    float A_data[16]; // Storage for 4x4 matrix
+    float b_data[4];  // Storage for 4x1 matrix
 
-    // Fill the matrices A and b based on the points
     for (int i = 0; i < 4; i++) {
         float x_i = points[i].x;
-        A.at<float>(i, 0) = x_i * x_i * x_i; // x^3
-        A.at<float>(i, 1) = x_i * x_i;       // x^2
-        A.at<float>(i, 2) = x_i;             // x
-        A.at<float>(i, 3) = 1;               // 1
-        b.at<float>(i, 0) = points[i].y;
+        A_data[i * 4 + 0] = x_i * x_i * x_i; // x^3
+        A_data[i * 4 + 1] = x_i * x_i;       // x^2
+        A_data[i * 4 + 2] = x_i;             // x
+        A_data[i * 4 + 3] = 1;               // 1
+        b_data[i] = points[i].y;
     }
+
+    cv::Mat A(4, 4, CV_32F, A_data);
+    cv::Mat b(4, 1, CV_32F, b_data);
+    cv::Mat x(4, 1, CV_32F); // This will hold the coefficients
 
     // Solve the system Ax = b for x
     cv::solve(A, b, x, cv::DECOMP_LU); // You can use DECOMP_SVD for more stability
@@ -777,10 +780,10 @@ void FisheyeEffect::generateDistortionMapsfromFixedGridMap(
                 }
                 else
                 {
-                    if (getTileRectMap4x4(PointSrc, imageSize, gridSize, GDC_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
-                        // bilinear interpolation logic
-                        CorrectedPoint = bicubicInterpolate(PointSrc, GridRectMap);
-                    }
+                    //if (getTileRectMap4x4(PointSrc, imageSize, gridSize, GDC_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
+                    //    // bilinear interpolation logic
+                    //    CorrectedPoint = bicubicInterpolate(PointSrc, GridRectMap);
+                    //}
 
                 }
             }
@@ -1154,18 +1157,10 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
     }
 
     cv::Point PointSrc; // cv::Point Index
-    cv::Point CornerIdx;
     RectPoints GridRectMap, GridRectMapAdaptive;
 
     cv::Point2f CorrectedPoint; // Grid Index
-    cv::Point2f LeftTopPoint; // Grid Index
 
-    const int cellWidth = imageSize.width / (gridSize.x - 1);
-    const int cellHeight = imageSize.height / (gridSize.y - 1);
-
-    cv::Point CellSize(cellWidth, cellHeight);
-
-    //printf("Performing Full Image Interpolation!\n");
 
     // Interpolate and fill the missing pixels
     for (int y = 0; y < imageSize.height; ++y) {
@@ -1186,6 +1181,8 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
                     if (getTileRectMap4x4(PointSrc, imageSize, gridSize, GDC_Adaptive_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
                         // BiCubic interpolation logic
                         CorrectedPoint = bicubicInterpolate(PointSrc, GridRectMap);
+
+                        //CorrectedPoint = bilinearInterpolate(PointSrc, GridRectMapAdaptive);
                     }
                 }
             }

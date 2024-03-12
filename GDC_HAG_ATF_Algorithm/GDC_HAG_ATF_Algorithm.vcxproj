@@ -136,6 +136,7 @@
     <ClCompile Include="FisheyeEffect.cpp" />
     <ClCompile Include="GDC_HAG_ATF_Algorithm.cpp" />
     <ClCompile Include="ImageUtils.cpp" />
+    <ClCompile Include="Interpolation.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
