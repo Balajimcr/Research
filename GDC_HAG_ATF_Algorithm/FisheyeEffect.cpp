@@ -480,18 +480,19 @@ bool getTileRectMap(const cv::Point& pt, const cv::Size& imageSize, const cv::Po
     return true;
 }
 
-
+/*
 bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, RectPoints& cellRect, RectPoints& cellRectAdaptive) {
     float cellWidth =  (float)imageSize.width  / (float)(gridSize.x - 1);
     float cellHeight = (float)imageSize.height / (float)(gridSize.y - 1);
 
     // Calculate the closest grid point to the target point
     cv::Point closestGridIndex((float)pt.x / cellWidth, (float)pt.y / cellHeight);
-
-    // Adjust the closest grid point to ensure the 4x4 neighborhood can be centered around it
-    closestGridIndex.x = std::max(1, std::min(closestGridIndex.x, gridSize.x - 3));
-    closestGridIndex.y = std::max(1, std::min(closestGridIndex.y, gridSize.y - 3));
-
+ 
+  // Adjust the closest grid point to ensure the 4x4 neighborhood can be centered around it
+  //closestGridIndex.x = std::max(1, std::min(closestGridIndex.x, gridSize.x - 3));
+  //closestGridIndex.y = std::max(1, std::min(closestGridIndex.y, gridSize.y - 3));
+  //std::cout << "\n" << closestGridIndex.x << "\t" << closestGridIndex.y << "\n";
+    
     memset(cellRectAdaptive.cornersIdx, 0, sizeof(cellRectAdaptive.cornersIdx));
 
     // Loop to populate the 4x4 neighborhood
@@ -523,7 +524,7 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
     }
 
     // Populate the Adaptive 3x4 Points
-    for (int i = -1; i <= 1; ++i) {
+    for (int i = -1; i <= 0; ++i) {
         for (int j = -1; j <= 2; ++j) {
             cv::Point gridPointIdx = closestGridIndex + cv::Point(i, j);
 
@@ -534,7 +535,7 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
                 cv::Point AdaptiveGridPoint = cv::Point((gridPointIdx.x * cellWidth), gridPointIdx.y * cellHeight) + cv::Point(cellWidth / 2, 0);
 
                 // Find the Adaptive point in GDC_Adaptive_Grid_Points
-                if (findGridPointValue(GDC_Adaptive_Grid_Points, AdaptiveGridPoint, cellRect.cornersMap[i + 1][j + 1])) {
+                if (findGridPointValue(GDC_Adaptive_Grid_Points, AdaptiveGridPoint, cellRectAdaptive.cornersMap[i + 1][j + 1])) {
                     cellRectAdaptive.cornersPoint[i + 1][j + 1] = AdaptiveGridPoint;
                     cellRectAdaptive.cornersIdx[i + 1][j + 1] = 1;
                 }
@@ -544,7 +545,96 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
 
     return true;
 }
+*/
 
+bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize,
+    const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points,
+    RectPoints& cellRect, RectPoints& cellRectAdaptive) {
+    float cellWidth = (float)imageSize.width / (float)(gridSize.x - 1);
+    float cellHeight = (float)imageSize.height / (float)(gridSize.y - 1);
+
+    cv::Point gridIndex;
+
+    // Find the grid cell indices that the point falls into
+    gridIndex.x = pt.x / cellWidth;
+    gridIndex.y = pt.y / cellHeight;
+
+
+    cellRect.cornersPoint[0][0] = cv::Point((gridIndex.x + 0) * cellWidth, (gridIndex.y + 0) * cellHeight);
+    cellRect.cornersPoint[0][1] = cv::Point((gridIndex.x + 1) * cellWidth, (gridIndex.y + 0) * cellHeight);
+    cellRect.cornersPoint[0][2] = cv::Point((gridIndex.x + 2) * cellWidth, (gridIndex.y + 0) * cellHeight);
+    cellRect.cornersPoint[0][3] = cv::Point((gridIndex.x + 3) * cellWidth, (gridIndex.y + 0) * cellHeight);
+    cellRect.cornersPoint[1][0] = cv::Point((gridIndex.x + 0) * cellWidth, (gridIndex.y + 1) * cellHeight);
+    cellRect.cornersPoint[1][1] = cv::Point((gridIndex.x + 1) * cellWidth, (gridIndex.y + 1) * cellHeight);
+    cellRect.cornersPoint[1][2] = cv::Point((gridIndex.x + 2) * cellWidth, (gridIndex.y + 1) * cellHeight);
+    cellRect.cornersPoint[1][3] = cv::Point((gridIndex.x + 3) * cellWidth, (gridIndex.y + 1) * cellHeight);
+    cellRect.cornersPoint[2][0] = cv::Point((gridIndex.x + 0) * cellWidth, (gridIndex.y + 2) * cellHeight);
+    cellRect.cornersPoint[2][1] = cv::Point((gridIndex.x + 1) * cellWidth, (gridIndex.y + 2) * cellHeight);
+    cellRect.cornersPoint[2][2] = cv::Point((gridIndex.x + 2) * cellWidth, (gridIndex.y + 2) * cellHeight);
+    cellRect.cornersPoint[2][3] = cv::Point((gridIndex.x + 3) * cellWidth, (gridIndex.y + 2) * cellHeight);
+    cellRect.cornersPoint[3][0] = cv::Point((gridIndex.x + 0) * cellWidth, (gridIndex.y + 3) * cellHeight);
+    cellRect.cornersPoint[3][1] = cv::Point((gridIndex.x + 1) * cellWidth, (gridIndex.y + 3) * cellHeight);
+    cellRect.cornersPoint[3][2] = cv::Point((gridIndex.x + 2) * cellWidth, (gridIndex.y + 3) * cellHeight);
+    cellRect.cornersPoint[3][3] = cv::Point((gridIndex.x + 3) * cellWidth, (gridIndex.y + 3) * cellHeight);
+
+    //std::cout << "\n" << cellRect.cornersPoint[0][0] << "\t" << cellRect.cornersPoint[0][1] << "\t" << cellRect.cornersPoint[0][2] << "\t" << cellRect.cornersPoint[0][3] << "\n";
+    //std::cout << "\n" << cellRect.cornersPoint[1][0] << "\t" << cellRect.cornersPoint[1][1] << "\t" << cellRect.cornersPoint[1][2] << "\t" << cellRect.cornersPoint[1][3] << "\n";
+    //std::cout << "\n" << cellRect.cornersPoint[2][0] << "\t" << cellRect.cornersPoint[2][1] << "\t" << cellRect.cornersPoint[2][2] << "\t" << cellRect.cornersPoint[2][3] << "\n";
+    //std::cout << "\n" << cellRect.cornersPoint[3][0] << "\t" << cellRect.cornersPoint[3][1] << "\t" << cellRect.cornersPoint[3][2] << "\t" << cellRect.cornersPoint[3][3] << "\n";
+
+    memset(cellRectAdaptive.cornersIdx, 0, sizeof(cellRectAdaptive.cornersIdx));
+
+    // Loop to populate the 4x4 neighborhood
+    bool allPointsFound = true;
+    for (int i = -1; i <= 2; ++i) {
+        for (int j = -1; j <= 2; ++j) {
+            //cv::Point gridPoint = closestGridIndex + cv::Point(i, j);
+            if (!findGridPointValue(GDC_Adaptive_Grid_Points, cellRect.cornersPoint[i + 1][j + 1], cellRect.cornersMap[i + 1][j + 1])) {
+                allPointsFound = false;
+                break; // Exit inner loop if point is not found
+            }
+        }
+    }
+
+    if (!allPointsFound)
+    {
+        gridIndex.x = std::max(0, std::min(gridIndex.x, gridSize.x - 2));
+        gridIndex.y = std::max(0, std::min(gridIndex.y, gridSize.y - 2));
+
+        cellRect.cornersPoint[0][0] = cv::Point((gridIndex.x + 0) * cellWidth, (gridIndex.y + 0) * cellHeight);
+        cellRect.cornersPoint[0][1] = cv::Point((gridIndex.x + 1) * cellWidth, (gridIndex.y + 0) * cellHeight);
+        cellRect.cornersPoint[0][2] = cv::Point((gridIndex.x + 2) * cellWidth, (gridIndex.y + 0) * cellHeight);
+        cellRect.cornersPoint[0][3] = cv::Point((gridIndex.x + 3) * cellWidth, (gridIndex.y + 0) * cellHeight);
+        cellRect.cornersPoint[1][0] = cv::Point((gridIndex.x + 0) * cellWidth, (gridIndex.y + 1) * cellHeight);
+        cellRect.cornersPoint[1][1] = cv::Point((gridIndex.x + 1) * cellWidth, (gridIndex.y + 1) * cellHeight);
+        cellRect.cornersPoint[1][2] = cv::Point((gridIndex.x + 2) * cellWidth, (gridIndex.y + 1) * cellHeight);
+        cellRect.cornersPoint[1][3] = cv::Point((gridIndex.x + 3) * cellWidth, (gridIndex.y + 1) * cellHeight);
+        cellRect.cornersPoint[2][0] = cv::Point((gridIndex.x + 0) * cellWidth, (gridIndex.y + 2) * cellHeight);
+        cellRect.cornersPoint[2][1] = cv::Point((gridIndex.x + 1) * cellWidth, (gridIndex.y + 2) * cellHeight);
+        cellRect.cornersPoint[2][2] = cv::Point((gridIndex.x + 2) * cellWidth, (gridIndex.y + 2) * cellHeight);
+        cellRect.cornersPoint[2][3] = cv::Point((gridIndex.x + 3) * cellWidth, (gridIndex.y + 2) * cellHeight);
+        cellRect.cornersPoint[3][0] = cv::Point((gridIndex.x + 0) * cellWidth, (gridIndex.y + 3) * cellHeight);
+        cellRect.cornersPoint[3][1] = cv::Point((gridIndex.x + 1) * cellWidth, (gridIndex.y + 3) * cellHeight);
+        cellRect.cornersPoint[3][2] = cv::Point((gridIndex.x + 2) * cellWidth, (gridIndex.y + 3) * cellHeight);
+        cellRect.cornersPoint[3][3] = cv::Point((gridIndex.x + 3) * cellWidth, (gridIndex.y + 3) * cellHeight);
+
+        for (int i = -1; i <= 0; ++i) {
+            for (int j = -1; j <= 2; ++j) {
+                if (!findGridPointValue(GDC_Adaptive_Grid_Points, cellRect.cornersPoint[i + 1][j + 1], cellRect.cornersMap[i + 1][j + 1])) {
+                    allPointsFound = false;
+                    break; // Exit inner loop if point is not found
+                }
+
+
+            }
+        }
+    }
+    if (!allPointsFound)
+    {
+        return false;
+    }
+    return true;
+}
 //float bicubicInterpolateKernel(float x) {
 //    const float a = -0.5; // Coefficient for the cubic interpolation kernel
 //    if (x < 0.0) {
@@ -621,39 +711,43 @@ std::vector<float> calculateCubicCoefficients(const std::vector<cv::Point2f>& po
 
 // Perform cubic interpolation using coefficients
 float cubicInterpolate(const std::vector<float>& coefficients, float x) {
-    // Assuming coefficients are [a, b, c, d] for ax^3 + bx^2 + cx + d
-    return coefficients[0] * pow(x, 3) + coefficients[1] * pow(x, 2) + coefficients[2] * x + coefficients[3];
+    return coefficients[1] + 0.5 * x * (coefficients[2] - coefficients[0] + x * (2.0 * coefficients[0] - 5.0 * coefficients[1] + 4.0 * coefficients[2] - coefficients[3] + x * (3.0 * (coefficients[1] - coefficients[2]) + coefficients[3] - coefficients[0])));
+
 }
 
 // Bicubic interpolation based on the provided structure and point
 cv::Point2f bicubicInterpolate(const cv::Point& pt, const RectPoints& cellRect) {
-    
-    // Assuming cellRect provides a 4x4 neighborhood around the point of interest
-    const float cellWidth = std::abs(cellRect.cornersPoint[0][1].x - cellRect.cornersPoint[0][0].x);
-    const float cellHeight = std::abs(cellRect.cornersPoint[1][0].y - cellRect.cornersPoint[0][0].y);
 
-    // Calculate the position of pt relative to the top-left corner of the top-left cell
-    float xRatio = (pt.x - cellRect.cornersPoint[0][0].x) / cellWidth;
-    float yRatio = (pt.y - cellRect.cornersPoint[0][0].y) / cellHeight;
 
-    // Clamp the fractions to avoid extrapolation
-    xRatio = clamp(xRatio, 0.0f, 1.0f);
-    yRatio = clamp(yRatio, 0.0f, 1.0f);
+    std::vector<float> arr(4); // Initialize with a size of 4
+    std::vector<std::vector<float>> y(4, std::vector<float>(4)); // Initialize with 4x4 size
 
-    // Interpolate horizontally
-    std::vector<cv::Point2f> intermediatePoints;
     for (int i = 0; i < 4; ++i) {
-        std::vector<cv::Point2f> rowPoints(cellRect.cornersMap[i], cellRect.cornersMap[i] + 4);
-        std::vector<float> coefficients = calculateCubicCoefficients(rowPoints);
-        float interpolatedX = cubicInterpolate(coefficients, xRatio);
-        intermediatePoints.push_back(cv::Point2f(interpolatedX, 0)); // Using 0 for y as placeholder
+        y[0][i] = cellRect.cornersMap[0][i].x;
+        y[1][i] = cellRect.cornersMap[1][i].x;
+        y[2][i] = cellRect.cornersMap[2][i].x;
+        y[3][i] = cellRect.cornersMap[3][i].x;
+        //std::cout<<"\n i\t" <<i<< y[0][i] << "\t" << y[1][i] << "\t" << y[2][i] << "\t" << y[3][i] << "\n";
     }
 
-    // Now, interpolate these intermediate points vertically
-    std::vector<float> verticalCoefficients = calculateCubicCoefficients(intermediatePoints);
-    float finalY = cubicInterpolate(verticalCoefficients, yRatio);
+    arr[0] = cubicInterpolate(y[0], pt.y);
+    arr[1] = cubicInterpolate(y[1], pt.y);
+    arr[2] = cubicInterpolate(y[2], pt.y);
+    arr[3] = cubicInterpolate(y[3], pt.y);
 
-    return cv::Point2f(intermediatePoints[0].x, finalY); // Use the x from the first intermediate point and the final y
+    // Perform interpolation for x using the interpolated y values
+    float interpolatedX = cubicInterpolate(arr, pt.x);
+
+    return cv::Point2f(interpolatedX, arr[0]);
+
+    float sumx = 0.0, sumy = 0.0;
+    for (int i = 0; i < 4; i++)
+    {
+        sumx = cellRect.cornersMap[0][i].x + cellRect.cornersMap[1][i].x + cellRect.cornersMap[2][i].x + cellRect.cornersMap[3][i].x;
+        sumy = cellRect.cornersMap[0][i].y + cellRect.cornersMap[1][i].y + cellRect.cornersMap[2][i].y + cellRect.cornersMap[3][i].y;
+    }
+    return cv::Point2f(sumx / 4.0, sumy / 4.0);
+
 }
 
 //// Auxiliary function to calculate the cubic interpolation for one dimension
@@ -1175,7 +1269,7 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
             
             if (!findGridPointValue(GDC_Adaptive_Grid_Points, PointSrc, CorrectedPoint)) {
 
-                if (method == InterpolationMethod::BILINEAR) {
+                if (method == InterpolationMethod::BILINEAR &&0) {
                     if (getTileRectMap(PointSrc, imageSize, gridSize, GDC_Adaptive_Grid_Points, GridRectMap)) {
                         // bilinear interpolation logic
                         CorrectedPoint = bilinearInterpolate(PointSrc, GridRectMap);
@@ -1186,6 +1280,8 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
                     if (getTileRectMap4x4(PointSrc, imageSize, gridSize, GDC_Adaptive_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
                         // BiCubic interpolation logic
                         CorrectedPoint = bicubicInterpolate(PointSrc, GridRectMap);
+                        //std::cout << "\ndone\n";
+                        //return;
                     }
                 }
             }
