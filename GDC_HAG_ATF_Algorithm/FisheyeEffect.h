@@ -8,6 +8,7 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
     return std::max(lo, std::min(v, hi));
 }
 
+
 // Struct to represent a 2x2 or 4x4 array of rectangles
 struct RectPoints {
     cv::Point   cornersPoint[4][4];  // Image Point Index
@@ -27,6 +28,9 @@ struct RectPoints {
 };
 
 
+
+
+
 struct PointCompare {
     bool operator()(const cv::Point& a, const cv::Point& b) const {
         if (a.x < b.x) return true;
@@ -42,6 +46,7 @@ bool findGridPointValue(const std::map<cv::Point, cv::Point2f, PointCompare>& gr
 bool getTileRectMap(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, RectPoints& cellRect);
 bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, RectPoints& cellRect, RectPoints& cellRectAdaptive);
 bool getTileRectMapFixed(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, std::map<cv::Point, cv::Point2f, PointCompare> GDC_Fixed_Grid_Points, RectPoints& cellRect);
+cv::Point2f bilinearInterpolate(const cv::Point& pt, const RectPoints& cellRect);
 // ![get-psnr]
 static double getPSNR(const cv::Mat& I1, const cv::Mat& I2)
 {

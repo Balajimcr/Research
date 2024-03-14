@@ -1,5 +1,6 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
+#include <fstream>
 #include <random> // Include for random number generation
 #include "FisheyeEffect.h"
 //#include "ImageUtils.h"
@@ -438,22 +439,21 @@ void Test_FindNearestPointsinAdaptiveGridMap4x4(const cv::Size& ImageSize, const
                         // bilinear interpolation logic
                         rectangle(Image, Rect(GridRectMap.cornersPoint[0][0], GridRectMap.cornersPoint[3][3]), Color, 2);
 
-                        Scalar Color1(Rndm.uniform(0, 255), Rndm.uniform(0, 255), Rndm.uniform(0, 255));
+                        Scalar Color1(255, 0, 0);
                         
                         for (size_t i = 0; i < 4; i++)
                         {
                             for (size_t j = 0; j < 4; j++)
                             {
-                                circle(Image, GridRectMap.cornersPoint[i][j], 2, Color1, 2);
+                                circle(Image, GridRectMap.cornersPoint[i][j], 2, Scalar(255,0,255-(i*50)), 2);
                             }
                         }
-
                         for (size_t i = 0; i < 4; i++)
                         {
                             for (size_t j = 0; j < 4; j++)
                             {
-                                if(GridRectMapAdaptive.cornersIdx[i][j])
-                                    circle(Image, GridRectMapAdaptive.cornersPoint[i][j], 2, Scalar(0,255,0), 2);
+                                if (GridRectMapAdaptive.cornersIdx[i][j])
+                                    circle(Image, GridRectMapAdaptive.cornersPoint[i][j], 2, Scalar(0, 255, 0) - cv::Scalar(0, i * 20, 0), 2);
                             }
                         }
 
@@ -461,12 +461,6 @@ void Test_FindNearestPointsinAdaptiveGridMap4x4(const cv::Size& ImageSize, const
                         cv::imshow("Error Case Adaptive Grid", Image);
                         waitKey(0);
 
-                    }
-                    else// Corner Points not found or Failure case
-                    {
-                        circle(Image, PointSrc, 4, Scalar(0, 0, 255), 2);
-                        cv::imshow("Error Case Adaptive Grid", Image);
-                        waitKey(0);
                     }
                 }
                 else // Corner Grid Point
@@ -508,9 +502,17 @@ std::vector<cv::Size> findPerfectGrids(const cv::Size & imageSize) {
     return perfectGrids;
 }
 
+void writeCSV(string filename, cv::Mat m)
+{
+    std::ofstream myfile;
+    myfile.open(filename.c_str());
+    myfile << cv::format(m, cv::Formatter::FMT_CSV) << std::endl;
+    myfile.close();
+}
+
 int main() {
     
-    Size ImageSize(1280, 768);
+    Size ImageSize(1280, 720);
     int Grid_Size = 35, Grid_Size_FC = 35;
 
     //Grid_Size_FC = Grid_Size;
@@ -543,6 +545,9 @@ int main() {
     Mat distortionMagnitude = computeDistortionMagnitude(Map_x, Map_y);
     
     cv::remap(srcImage, distortedImage_GT, Map_x, Map_y, interpolation, borderMode);
+
+    writeCSV("GT_Mapx.csv", Map_x);
+    writeCSV("GT_Mapy.csv", Map_y);
 
     vector<Point> GDC_Fixed_Grid_Points;
 
@@ -586,7 +591,7 @@ int main() {
 
     // Display and save the images
     //displayAndSaveImage(srcImage, "0_Source Image");
-    //displayAndSaveImage(distortedImage_GT, "1_Distorted Image");
+    displayAndSaveImage(distortedImage_GT, "1_Distorted Image");
     //imwrite("2_Magnitude of Distortion.png", distortionMagnitude * 255);
 
 #if 1
@@ -608,6 +613,9 @@ int main() {
 
     Mat Map_x_AG, Map_y_AG;
     distorter.getDistortionMaps(Map_x_AG, Map_y_AG);
+
+    writeCSV("GT_Mapx_AG.csv", Map_x_AG);
+    writeCSV("GT_Mapy_AG.csv", Map_y_AG);
 
     cv::remap(srcImage, distortedImage_AdaptiveGrid, Map_x_AG, Map_y_AG, interpolation, borderMode);
 

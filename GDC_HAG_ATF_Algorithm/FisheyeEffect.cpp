@@ -503,12 +503,12 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
             if (gridPoint.x >= 0 && gridPoint.x < gridSize.x && gridPoint.y >= 0 && gridPoint.y < gridSize.y) {
                 
                 // Assign the gridPoint to cellRect.cornersPoint
-                cellRect.cornersPoint[i + 1][j + 1] = cv::Point(gridPoint.x* cellWidth, gridPoint.y * cellHeight);
+                cellRect.cornersPoint[j + 1][i + 1] = cv::Point(gridPoint.x* cellWidth, gridPoint.y * cellHeight);
 
                 // Find the corresponding mapped point in GDC_Adaptive_Grid_Points
-                if (findGridPointValue(GDC_Adaptive_Grid_Points, cellRect.cornersPoint[i + 1][j + 1], cellRect.cornersMap[i + 1][j + 1])) {
+                if (findGridPointValue(GDC_Adaptive_Grid_Points, cellRect.cornersPoint[j + 1][i + 1], cellRect.cornersMap[j + 1][i + 1])) {
                     // Optionally, you could also populate cornersIdx here if needed
-                    // cellRect.cornersIdx[i + 1][j + 1] = <appropriate index value>;
+                    // cellRect.cornersIdx[j + 1][i + 1] = <appropriate index value>;
                 }
                 else {
                     // If the point is not found, handle it according to your error handling strategy
@@ -534,178 +534,52 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
                 cv::Point AdaptiveGridPoint = cv::Point((gridPointIdx.x * cellWidth), gridPointIdx.y * cellHeight) + cv::Point(cellWidth / 2, 0);
 
                 // Find the Adaptive point in GDC_Adaptive_Grid_Points
-                if (findGridPointValue(GDC_Adaptive_Grid_Points, AdaptiveGridPoint, cellRectAdaptive.cornersMap[i + 1][j + 1])) {
-                    cellRectAdaptive.cornersPoint[i + 1][j + 1] = AdaptiveGridPoint;
-                    cellRectAdaptive.cornersIdx[i + 1][j + 1] = 1;
+                if (findGridPointValue(GDC_Adaptive_Grid_Points, AdaptiveGridPoint, cellRectAdaptive.cornersMap[j + 1][i + 1])) {
+                    cellRectAdaptive.cornersPoint[j + 1][i + 1] = AdaptiveGridPoint;
+                    cellRectAdaptive.cornersIdx[j + 1][i + 1] = 1;
                 }
             }
         }
     }
-
     return true;
 }
 
-//float bicubicInterpolateKernel(float x) {
-//    const float a = -0.5; // Coefficient for the cubic interpolation kernel
-//    if (x < 0.0) {
-//        x = -x;
-//    }
-//    float z = 0.0;
-//    if (x < 1.0) {
-//        z = (a + 2.0) * pow(x, 3) - (a + 3.0) * pow(x, 2) + 1;
-//    }
-//    else if (x < 2.0) {
-//        z = a * pow(x, 3) - 5 * a * pow(x, 2) + 8 * a * x - 4 * a;
-//    }
-//    return z;
-//}
-//
-//cv::Point2f bicubicInterpolate(const cv::Point& pt, const RectPoints& cellRect, const cv::Mat& image) {
-//    // This function needs to be adapted to your data structures and types
-//    // Here, it's assumed that `image` is accessible and contains the original pixel values
-//
-//    float dx, dy; // Calculate relative position of `pt` within `cellRect`
-//
-//    // Accumulators for interpolation
-//    float interpolatedX = 0.0, interpolatedY = 0.0;
-//    float weightSum = 0.0;
-//
-//    // Loop over the 16 surrounding points
-//    for (int m = -1; m <= 2; ++m) {
-//        for (int n = -1; n <= 2; ++n) {
-//            // Calculate the weight for each surrounding point
-//            float weight = bicubicInterpolateKernel(m - dx) * bicubicInterpolateKernel(dy - n);
-//
-//            // Accumulate weighted sum of pixel values
-//            cv::Point2f surroundingPoint = getSurroundingPoint(pt, m, n); // You'll need to implement this
-//            interpolatedX += surroundingPoint.x * weight;
-//            interpolatedY += surroundingPoint.y * weight;
-//
-//            weightSum += weight;
-//        }
-//    }
-//
-//    // Normalize the interpolated values
-//    return cv::Point2f(interpolatedX / weightSum, interpolatedY / weightSum);
-//}
-
-std::vector<float> calculateCubicCoefficients(const std::vector<cv::Point2f>& points) {
-    CV_Assert(points.size() == 4); // Ensure there are exactly 4 points
-
-    // Directly initialize A and b with their values
-    float A_data[16]; // Storage for 4x4 matrix
-    float b_data[4];  // Storage for 4x1 matrix
-
-    for (int i = 0; i < 4; i++) {
-        float x_i = points[i].x;
-        A_data[i * 4 + 0] = x_i * x_i * x_i; // x^3
-        A_data[i * 4 + 1] = x_i * x_i;       // x^2
-        A_data[i * 4 + 2] = x_i;             // x
-        A_data[i * 4 + 3] = 1;               // 1
-        b_data[i] = points[i].y;
-    }
-
-    cv::Mat A(4, 4, CV_32F, A_data);
-    cv::Mat b(4, 1, CV_32F, b_data);
-    cv::Mat x(4, 1, CV_32F); // This will hold the coefficients
-
-    // Solve the system Ax = b for x
-    cv::solve(A, b, x, cv::DECOMP_LU); // You can use DECOMP_SVD for more stability
-
-    // Extract the coefficients from x and return them
-    std::vector<float> coefficients(4);
-    coefficients[0] = x.at<float>(0, 0); // a
-    coefficients[1] = x.at<float>(1, 0); // b
-    coefficients[2] = x.at<float>(2, 0); // c
-    coefficients[3] = x.at<float>(3, 0); // d
-
-    return coefficients;
+// Function to calculate the cubic polynomial coefficients
+void getCubicCoeffs(float x, float& a, float& b, float& c, float& d) {
+    a = -0.5f * x * x * x + x * x - 0.5f * x;
+    b = 1.5f * x * x * x - 2.5f * x * x + 1.0f;
+    c = -1.5f * x * x * x + 2.0f * x * x + 0.5f * x;
+    d = 0.5f * x * x * x - 0.5f * x * x;
 }
 
-// Perform cubic interpolation using coefficients
-float cubicInterpolate(const std::vector<float>& coefficients, float x) {
-    // Assuming coefficients are [a, b, c, d] for ax^3 + bx^2 + cx + d
-    return coefficients[0] * pow(x, 3) + coefficients[1] * pow(x, 2) + coefficients[2] * x + coefficients[3];
-}
-
-// Bicubic interpolation based on the provided structure and point
-cv::Point2f bicubicInterpolate(const cv::Point& pt, const RectPoints& cellRect) {
+// Function to perform Bicubic Interpolation
+cv::Point2f bicubicInterpolate(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const RectPoints& cellRect) {
     
-    // Assuming cellRect provides a 4x4 neighborhood around the point of interest
-    const float cellWidth = std::abs(cellRect.cornersPoint[0][1].x - cellRect.cornersPoint[0][0].x);
-    const float cellHeight = std::abs(cellRect.cornersPoint[1][0].y - cellRect.cornersPoint[0][0].y);
+    float cellWidth = (float)imageSize.width / (float)(gridSize.x - 1);
+    float cellHeight = (float)imageSize.height / (float)(gridSize.y - 1);
 
-    // Calculate the position of pt relative to the top-left corner of the top-left cell
-    float xRatio = (pt.x - cellRect.cornersPoint[0][0].x) / cellWidth;
-    float yRatio = (pt.y - cellRect.cornersPoint[0][0].y) / cellHeight;
+    // Calculate the relative position of the target pixel within the 4x4 neighborhood
+    const float xRatio = (pt.x - cellRect.cornersPoint[1][1].x) / cellWidth;
+    const float yRatio = (pt.y - cellRect.cornersPoint[1][1].y) / cellHeight;
 
-    // Clamp the fractions to avoid extrapolation
-    xRatio = clamp(xRatio, 0.0f, 1.0f);
-    yRatio = clamp(yRatio, 0.0f, 1.0f);
+    float x_coeffs[4], y_coeffs[4];
+    getCubicCoeffs(xRatio, x_coeffs[0], x_coeffs[1], x_coeffs[2], x_coeffs[3]);
+    getCubicCoeffs(yRatio, y_coeffs[0], y_coeffs[1], y_coeffs[2], y_coeffs[3]);
 
-    // Interpolate horizontally
-    std::vector<cv::Point2f> intermediatePoints;
+    float interpolatedX = 0.0f, interpolatedY = 0.0f;
+
     for (int i = 0; i < 4; ++i) {
-        std::vector<cv::Point2f> rowPoints(cellRect.cornersMap[i], cellRect.cornersMap[i] + 4);
-        std::vector<float> coefficients = calculateCubicCoefficients(rowPoints);
-        float interpolatedX = cubicInterpolate(coefficients, xRatio);
-        intermediatePoints.push_back(cv::Point2f(interpolatedX, 0)); // Using 0 for y as placeholder
+        float x_sum = 0.0f, y_sum = 0.0f;
+        for (int j = 0; j < 4; ++j) {
+            x_sum += x_coeffs[j] * cellRect.cornersMap[i][j].x;
+            y_sum += x_coeffs[j] * cellRect.cornersMap[i][j].y;
+        }
+        interpolatedX += y_coeffs[i] * x_sum;
+        interpolatedY += y_coeffs[i] * y_sum;
     }
 
-    // Now, interpolate these intermediate points vertically
-    std::vector<float> verticalCoefficients = calculateCubicCoefficients(intermediatePoints);
-    float finalY = cubicInterpolate(verticalCoefficients, yRatio);
-
-    return cv::Point2f(intermediatePoints[0].x, finalY); // Use the x from the first intermediate point and the final y
+    return cv::Point2f(interpolatedX, interpolatedY);
 }
-
-//// Auxiliary function to calculate the cubic interpolation for one dimension
-//float cubicInterpolate(float v0, float v1, float v2, float v3, float fraction) {
-//    // Coefficients for cubic interpolation
-//    float p = (v3 - v2) - (v0 - v1);
-//    float q = (v0 - v1) - p;
-//    float r = v2 - v0;
-//    float s = v1;
-//
-//    return p * fraction * fraction * fraction + q * fraction * fraction + r * fraction + s;
-//}
-//
-//// Function to perform Bicubic Interpolation considering a local cell position
-//cv::Point2f bicubicInterpolate(const cv::Point& pt, const RectPoints& cellRect) {
-//    // Assuming cellRect provides a 4x4 neighborhood around the point of interest
-//    const float cellWidth = std::abs(cellRect.cornersPoint[0][1].x - cellRect.cornersPoint[0][0].x);
-//    const float cellHeight = std::abs(cellRect.cornersPoint[1][0].y - cellRect.cornersPoint[0][0].y);
-//
-//    // Calculate the position of pt relative to the top-left corner of the top-left cell
-//    float xFraction = (pt.x - cellRect.cornersPoint[0][0].x) / cellWidth;
-//    float yFraction = (pt.y - cellRect.cornersPoint[0][0].y) / cellHeight;
-//
-//    // Clamp the fractions to avoid extrapolation
-//    xFraction = clamp(xFraction, 0.0f, 1.0f);
-//    yFraction = clamp(yFraction, 0.0f, 1.0f);
-//
-//    // Interpolate along x for each row
-//    std::vector<float> rowInterpolationsX(4), rowInterpolationsY(4);
-//    for (int i = 0; i < 4; ++i) {
-//        rowInterpolationsX[i] = cubicInterpolate(
-//            cellRect.cornersMap[i][0].x,
-//            cellRect.cornersMap[i][1].x,
-//            cellRect.cornersMap[i][2].x,
-//            cellRect.cornersMap[i][3].x, xFraction);
-//        rowInterpolationsY[i] = cubicInterpolate(
-//            cellRect.cornersMap[i][0].y,
-//            cellRect.cornersMap[i][1].y,
-//            cellRect.cornersMap[i][2].y,
-//            cellRect.cornersMap[i][3].y, yFraction);
-//    }
-//
-//    // Finally, interpolate these intermediate values along y
-//    float interpolatedX = cubicInterpolate(rowInterpolationsX[0], rowInterpolationsX[1], rowInterpolationsX[2], rowInterpolationsX[3], xFraction);
-//    float interpolatedY = cubicInterpolate(rowInterpolationsY[0], rowInterpolationsY[1], rowInterpolationsY[2], rowInterpolationsY[3], yFraction);
-//
-//    return cv::Point2f(interpolatedX, interpolatedY);
-//}
-
 // Function to perform Bilinear Interpolation considering local cell position
 cv::Point2f bilinearInterpolate(const cv::Point& pt, const RectPoints& cellRect) {
     const float cellWidth = std::abs(cellRect.cornersPoint[0][1].x - cellRect.cornersPoint[0][0].x);
@@ -782,7 +656,7 @@ void FisheyeEffect::generateDistortionMapsfromFixedGridMap(
                 {
                     //if (getTileRectMap4x4(PointSrc, imageSize, gridSize, GDC_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
                     //    // bilinear interpolation logic
-                    //    CorrectedPoint = bicubicInterpolate(PointSrc, GridRectMap);
+                    //    CorrectedPoint = bilinearInterpolate(PointSrc, GridRectMap);
                     //}
 
                 }
@@ -1031,7 +905,7 @@ void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<c
             PtMap = cv::Point2f(static_cast<float>(x), static_cast<float>(y));
             // Commented out the visualization code
             //circle(normalized_magnitude, cv::Point(x, y), 1, cv::Scalar(255, 0, 0), 2);
-            GDC_Adaptive_Grid_Points[Pt] = PtMap;
+            GDC_Adaptive_Grid_Points[Pt] = PtMap*-1;
         }
     }
 
@@ -1054,11 +928,11 @@ void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<c
             const cv::Point newPoint2(x + (cellWidth / 2.0), y + cellHeight);
 
             if (predominantSegment >= 128) {
-                GDC_Adaptive_Grid_Points[newPoint]= cv::Point2f(newPoint);
+                GDC_Adaptive_Grid_Points[newPoint]= cv::Point2f(newPoint) * -1;
 
                 if (j == Grid_y - 2) {
                     //cv::circle(normalized_magnitude, newPoint2, 2, Red, 2);
-                    GDC_Adaptive_Grid_Points[newPoint2]= cv::Point2f(newPoint2);
+                    GDC_Adaptive_Grid_Points[newPoint2]= cv::Point2f(newPoint2) * -1;
                 }
 
                 if (predominantSegment == 255) { // High Distortion
@@ -1158,9 +1032,7 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
 
     cv::Point PointSrc; // cv::Point Index
     RectPoints GridRectMap, GridRectMapAdaptive;
-
     cv::Point2f CorrectedPoint; // Grid Index
-
 
     // Interpolate and fill the missing pixels
     for (int y = 0; y < imageSize.height; ++y) {
@@ -1180,9 +1052,7 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
                 {
                     if (getTileRectMap4x4(PointSrc, imageSize, gridSize, GDC_Adaptive_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
                         // BiCubic interpolation logic
-                        CorrectedPoint = bicubicInterpolate(PointSrc, GridRectMap);
-
-                        //CorrectedPoint = bilinearInterpolate(PointSrc, GridRectMapAdaptive);
+                        CorrectedPoint = bicubicInterpolate(PointSrc, imageSize, gridSize, GridRectMap);
                     }
                 }
             }
@@ -1201,8 +1071,18 @@ void FisheyeEffect::computeDistortionMapsfromAdaptiveGridMap(cv::Point GridSize,
     cv::Mat distortionMagnitude = computeDistortionMagnitude(this->mapX, this->mapY);
 
     std::map<cv::Point, cv::Point2f, PointCompare> GDC_Adaptive_Grid_Points;
+
+    InterpolationMethod interpolation = InterpolationMethod::BICUBIC;
+
+    if (interpolation == InterpolationMethod::BICUBIC) {
+        printf("Adaptive Grid : Bicubic Interpolation\n");
+    }
+    else
+    {
+        printf("Adaptive Grid : Bilinear Interpolation\n");
+    }
     
     Generate_AdaptiveGridMap(distortionMagnitude, GDC_Adaptive_Grid_Points, GridSize.x, GridSize.y,LowThreshold);
 
-    generateDistortionMapsfromAdaptiveGridMap(imageSize, GridSize, distStrength, GDC_Adaptive_Grid_Points, this->mapX, this->mapY, InterpolationMethod::BILINEAR);
+    generateDistortionMapsfromAdaptiveGridMap(imageSize, GridSize, distStrength, GDC_Adaptive_Grid_Points, this->mapX, this->mapY, interpolation);
 }
