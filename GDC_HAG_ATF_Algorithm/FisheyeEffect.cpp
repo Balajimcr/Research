@@ -545,11 +545,11 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
 }
 
 // Function to calculate the cubic polynomial coefficients
-void getCubicCoeffs(float x, float& a, float& b, float& c, float& d) {
-    a = -0.5f * x * x * x + x * x - 0.5f * x;
-    b = 1.5f * x * x * x - 2.5f * x * x + 1.0f;
-    c = -1.5f * x * x * x + 2.0f * x * x + 0.5f * x;
-    d = 0.5f * x * x * x - 0.5f * x * x;
+void getCubicCoeffs(float x, float coeffs[4]) {
+    coeffs[0] = -0.5f * x * x * x + x * x - 0.5f * x;
+    coeffs[1] = 1.5f * x * x * x - 2.5f * x * x + 1.0f;
+    coeffs[2] = -1.5f * x * x * x + 2.0f * x * x + 0.5f * x;
+    coeffs[3] = 0.5f * x * x * x - 0.5f * x * x;
 }
 
 // Function to perform Bicubic Interpolation
@@ -557,14 +557,16 @@ cv::Point2f bicubicInterpolate(const cv::Point& pt, const cv::Size& imageSize, c
     
     float cellWidth = (float)imageSize.width / (float)(gridSize.x - 1);
     float cellHeight = (float)imageSize.height / (float)(gridSize.y - 1);
+    
+    cv::Point ClosestGridIndex(1,1); // Note that Grid is centered around the Given Point
 
     // Calculate the relative position of the target pixel within the 4x4 neighborhood
-    const float xRatio = (pt.x - cellRect.cornersPoint[1][1].x) / cellWidth;
-    const float yRatio = (pt.y - cellRect.cornersPoint[1][1].y) / cellHeight;
+    const float xRatio = (pt.x - cellRect.cornersPoint[ClosestGridIndex.x][ClosestGridIndex.y].x) / cellWidth;
+    const float yRatio = (pt.y - cellRect.cornersPoint[ClosestGridIndex.x][ClosestGridIndex.y].y) / cellHeight;
 
     float x_coeffs[4], y_coeffs[4];
-    getCubicCoeffs(xRatio, x_coeffs[0], x_coeffs[1], x_coeffs[2], x_coeffs[3]);
-    getCubicCoeffs(yRatio, y_coeffs[0], y_coeffs[1], y_coeffs[2], y_coeffs[3]);
+    getCubicCoeffs(xRatio, x_coeffs);
+    getCubicCoeffs(yRatio, y_coeffs);
 
     float interpolatedX = 0.0f, interpolatedY = 0.0f;
 
@@ -737,6 +739,70 @@ void FisheyeEffect::generateDistortionMapsfromFixedGrid(
 
     bUseGeneratedMaps = true;
 }
+
+void FisheyeEffect::generateDistortionMapsfromFixedGridCV(
+    const cv::Size& imageSize,
+    const cv::Point& gridSize,
+    const double distStrength,
+    const std::vector<std::vector<cv::Point>>& GDC_Fixed_Grid_Points,
+    std::vector<std::vector<cv::Point2f>>& GDC_Fixed_Grid_Map,
+    cv::Mat& mapX,
+    cv::Mat& mapY,
+    InterpolationMethod method
+) {
+    mapX.create(imageSize, CV_32FC1);
+    mapY.create(imageSize, CV_32FC1);
+
+    mapX.setTo(0);
+    mapY.setTo(0);
+
+    cv::Mat mapX_Grid(gridSize.y, gridSize.x, CV_32FC1);
+    cv::Mat mapY_Grid(gridSize.y, gridSize.x, CV_32FC1);
+    
+
+    cv::Point2f center(imageSize.width / 2.0f, imageSize.height / 2.0f);
+
+    // Ensure GDC_Fixed_Grid_MapX/Y are the same size as the grid
+    GDC_Fixed_Grid_Map.resize(GDC_Fixed_Grid_Points.size());
+
+    // First, compute the distortion for fixed grid points
+    for (int i = 0; i < GDC_Fixed_Grid_Points.size(); ++i) {
+        GDC_Fixed_Grid_Map[i].resize(GDC_Fixed_Grid_Points[i].size());
+        for (int j = 0; j < GDC_Fixed_Grid_Points[i].size(); ++j) {
+            const cv::Point& gridPoint = GDC_Fixed_Grid_Points[i][j];
+
+            float deltaX = (gridPoint.x - center.x) / center.x;
+            float deltaY = (gridPoint.y - center.y) / center.y;
+            float distance = (sqrt(deltaX * deltaX + deltaY * deltaY)) / 2;
+            float distortion = 1.0f + distance * distStrength;
+
+            GDC_Fixed_Grid_Map[i][j] = cv::Point2f(center.x + (deltaX * distortion * center.x),
+                center.y + (deltaY * distortion * center.y));
+        }
+    }
+
+    for (size_t iRow = 0; iRow < gridSize.y; iRow++)
+    {
+        for (size_t iCol = 0; iCol < gridSize.x; iCol++)
+        {
+            mapX_Grid.at<float>(iRow, iCol) = GDC_Fixed_Grid_Map[iRow][iCol].x;
+            mapY_Grid.at<float>(iRow, iCol) = GDC_Fixed_Grid_Map[iRow][iCol].y;
+        }
+    }
+
+    if (method == InterpolationMethod::BILINEAR) {
+        cv::resize(mapX_Grid, mapX, imageSize, 0, 0, cv::INTER_LINEAR);
+        cv::resize(mapY_Grid, mapY, imageSize, 0, 0, cv::INTER_LINEAR);
+    }
+    else
+    {
+        cv::resize(mapX_Grid, mapX, imageSize, 0, 0, cv::INTER_LANCZOS4);
+        cv::resize(mapY_Grid, mapY, imageSize, 0, 0, cv::INTER_LANCZOS4);
+    }
+
+    bUseGeneratedMaps = true;
+}
+
 
 
 double FisheyeEffect::compareDistortionMaps(
