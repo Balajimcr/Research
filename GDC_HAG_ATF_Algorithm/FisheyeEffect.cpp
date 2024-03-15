@@ -544,6 +544,84 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
     return true;
 }
 
+std::vector<float> calculateCubicCoefficients(const std::vector<cv::Point2f>& points, bool isX) {
+    CV_Assert(points.size() == 4); // Ensure there are exactly 4 points
+
+    // Storage for matrix data
+    float A_data[16];
+    float b_data[4];
+
+    for (int i = 0; i < 4; i++) {
+        float val = isX ? points[i].x : points[i].y;
+        A_data[i * 4 + 0] = pow(val, 3);
+        A_data[i * 4 + 1] = pow(val, 2);
+        A_data[i * 4 + 2] = val;
+        A_data[i * 4 + 3] = 1;
+        b_data[i] = isX ? points[i].x : points[i].y; // Use X or Y value depending on isX flag
+    }
+
+    cv::Mat A(4, 4, CV_32F, A_data);
+    cv::Mat b(4, 1, CV_32F, b_data);
+    cv::Mat x(4, 1, CV_32F);
+
+    cv::solve(A, b, x, cv::DECOMP_LU);
+
+    std::vector<float> coefficients(4);
+    for (int i = 0; i < 4; ++i) {
+        coefficients[i] = x.at<float>(i, 0);
+    }
+
+    return coefficients;
+}
+
+// Perform cubic interpolation using coefficients
+float cubicInterpolate(const std::vector<float>& coefficients, float x) {
+    // Assuming coefficients are [a, b, c, d] for ax^3 + bx^2 + cx + d
+    return coefficients[0] * pow(x, 3) + coefficients[1] * pow(x, 2) + coefficients[2] * x + coefficients[3];
+}
+
+// Not - Working Bicubic interpolation based on the provided structure and point
+cv::Point2f bicubicInterpolate1(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const RectPoints& cellRect) {
+
+    // Assuming cellRect provides a 4x4 neighborhood around the point of interest
+    float cellWidth = (float)imageSize.width / (float)(gridSize.x - 1);
+    float cellHeight = (float)imageSize.height / (float)(gridSize.y - 1);
+
+    cv::Point ClosestGridIndex(1, 1); // Note that Grid is centered around the Given Point
+
+    // Calculate the relative position of the target pixel within the 4x4 neighborhood
+    const float xRatio = (pt.x - cellRect.cornersPoint[ClosestGridIndex.x][ClosestGridIndex.y].x) / cellWidth;
+    const float yRatio = (pt.y - cellRect.cornersPoint[ClosestGridIndex.x][ClosestGridIndex.y].y) / cellHeight;
+
+    std::vector<float> intermediateX(4), intermediateY(4);
+
+    // Horizontal interpolation for X and Y
+    for (int i = 0; i < 4; ++i) {
+        std::vector<cv::Point2f> rowPoints(std::begin(cellRect.cornersMap[i]), std::end(cellRect.cornersMap[i]));
+        std::vector<float> coefficientsX = calculateCubicCoefficients(rowPoints, true);
+        intermediateX[i] = cubicInterpolate(coefficientsX, xRatio);
+        std::vector<float> coefficientsY = calculateCubicCoefficients(rowPoints, false);
+        intermediateY[i] = cubicInterpolate(coefficientsY, yRatio);
+    }
+
+    // Vertical interpolation for X
+    std::vector<cv::Point2f> columnPointsX(4);
+    for (int i = 0; i < 4; ++i) {
+        columnPointsX[i] = cv::Point2f(intermediateX[i], static_cast<float>(i));
+    }
+    std::vector<float> finalCoefficientsX = calculateCubicCoefficients(columnPointsX, true);
+    float finalX = cubicInterpolate(finalCoefficientsX, yRatio);
+
+    // Vertical interpolation for Y
+    std::vector<cv::Point2f> columnPointsY(4);
+    for (int i = 0; i < 4; ++i) {
+        columnPointsY[i] = cv::Point2f(static_cast<float>(i), intermediateY[i]);
+    }
+    std::vector<float> finalCoefficientsY = calculateCubicCoefficients(columnPointsY, false);
+    float finalY = cubicInterpolate(finalCoefficientsY, yRatio);
+
+    return cv::Point2f(finalX, finalY);
+}
 // Function to calculate the cubic polynomial coefficients
 void getCubicCoeffs(float x, float coeffs[4]) {
     coeffs[0] = -0.5f * x * x * x + x * x - 0.5f * x;
@@ -552,17 +630,17 @@ void getCubicCoeffs(float x, float coeffs[4]) {
     coeffs[3] = 0.5f * x * x * x - 0.5f * x * x;
 }
 
-// Function to perform Bicubic Interpolation
+// Working Function to perform Bicubic Interpolation
 cv::Point2f bicubicInterpolate(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const RectPoints& cellRect) {
     
     float cellWidth = (float)imageSize.width / (float)(gridSize.x - 1);
     float cellHeight = (float)imageSize.height / (float)(gridSize.y - 1);
-    
+
     cv::Point ClosestGridIndex(1,1); // Note that Grid is centered around the Given Point
 
     // Calculate the relative position of the target pixel within the 4x4 neighborhood
-    const float xRatio = (pt.x - cellRect.cornersPoint[ClosestGridIndex.x][ClosestGridIndex.y].x) / cellWidth;
-    const float yRatio = (pt.y - cellRect.cornersPoint[ClosestGridIndex.x][ClosestGridIndex.y].y) / cellHeight;
+    const float xRatio = ((float)pt.x - (float)cellRect.cornersPoint[ClosestGridIndex.x][ClosestGridIndex.y].x) / cellWidth;
+    const float yRatio = ((float)pt.y - (float)cellRect.cornersPoint[ClosestGridIndex.x][ClosestGridIndex.y].y) / cellHeight;
 
     float x_coeffs[4], y_coeffs[4];
     getCubicCoeffs(xRatio, x_coeffs);

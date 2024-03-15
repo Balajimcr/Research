@@ -111,6 +111,16 @@ public:
         cv::Mat& mapY,
         InterpolationMethod method = InterpolationMethod::BILINEAR);
 
+    void generateDistortionMapsfromFixedGridCV(
+        const cv::Size& imageSize,
+        const cv::Point& gridSize,
+        const double distStrength,
+        const std::vector<std::vector<cv::Point>>& GDC_Fixed_Grid_Points,
+        std::vector<std::vector<cv::Point2f>>& GDC_Fixed_Grid_Map,
+        cv::Mat& mapX,
+        cv::Mat& mapY,
+        InterpolationMethod method = InterpolationMethod::BILINEAR);
+
     void generateDistortionMapsfromAdaptiveGridMap(
         const cv::Size& imageSize,
         const cv::Point& gridSize,

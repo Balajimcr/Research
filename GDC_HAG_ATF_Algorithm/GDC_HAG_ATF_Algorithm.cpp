@@ -67,6 +67,13 @@ void displayAndSaveImage(const Mat& image, const string& windowName) {
     imwrite(filename, image);
 }
 
+// Function to display and save an image
+void SaveImage(const Mat& image, const string& windowName) {
+    // Construct the filename using the window name and ".png" extension
+    string filename = windowName + ".png";
+    imwrite(filename, image);
+}
+
 void drawGridPoints(const vector<Point>& gridPoints, Mat& image, const Scalar& color, int radius, int thickness) {
 
     // Ensure the image is in a suitable format (like CV_8UC3)
@@ -130,7 +137,7 @@ void Generate_FixedGrid(const Mat& magnitude_of_distortion, vector<Point>& GDC_G
         }
     }
 
-    displayAndSaveImage(image, "3_Fixed Grid Points");
+    SaveImage(image, "3_Fixed Grid Points");
 }
 
 void segmentDistortionMap(const Mat& magnitude_of_distortion, Mat& outputMask, double lowThreshold, double highThreshold) {
@@ -242,7 +249,7 @@ void Generate_AdaptiveGrid(const Mat& magnitude_of_distortion, vector<Point>& GD
         }
     }
     
-    displayAndSaveImage(normalized_magnitude, "4_Adaptive Grid Points");
+    SaveImage(normalized_magnitude, "4_Adaptive Grid Points");
 }
 
 void Test_FindNearestPointsinFixedGridMap2x2(const cv::Size& ImageSize, const cv::Point GridSize, const std::map<cv::Point, cv::Point2f, PointCompare> GDC_Fixed_Grid_Points) {
@@ -590,8 +597,8 @@ int main() {
 #endif
 
     // Display and save the images
-    //displayAndSaveImage(srcImage, "0_Source Image");
-    displayAndSaveImage(distortedImage_GT, "1_Distorted Image");
+    //SaveImage(srcImage, "0_Source Image");
+    SaveImage(distortedImage_GT, "1_Distorted Image");
     //imwrite("2_Magnitude of Distortion.png", distortionMagnitude * 255);
 
 #if 1
@@ -607,7 +614,7 @@ int main() {
 
     rms_error_FixedGrid = distorter.compareDistortionMaps(Map_x, Map_y, Map_x_FG, Map_y_FG, "GT vs Fixed Grid");
 
-    //displayAndSaveImage(distortedImage_FixedGrid, "2_Distorted Image Fixed Grid");
+    SaveImage(distortedImage_FixedGrid, "2_Distorted Image Fixed Grid");
 
     distorter.computeDistortionMapsfromAdaptiveGridMap(Grid, distStrength, LowThreshold);
 
