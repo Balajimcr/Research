@@ -940,12 +940,12 @@ void FisheyeEffect::generateDistortionMapsfromFixedGrid(
     mapX.setTo(0);
     mapY.setTo(0);
 
-    _2D::BicubicInterp BicubicInterpolate_X;
-    _2D::BicubicInterp BicubicInterpolate_Y;
+    _2D::ThinPlateSplineInter BicubicInterpolate_X;
+    _2D::ThinPlateSplineInter BicubicInterpolate_Y;
 
     int Grid_Size = gridSize.x * gridSize.y;
 
-    _2D::BicubicInterpolator<double>::VectorType x(Grid_Size), y(Grid_Size), GridX(Grid_Size), GridY(Grid_Size);
+    _2D::ThinPlateSplineInterpolator<double>::VectorType x(Grid_Size), y(Grid_Size), GridX(Grid_Size), GridY(Grid_Size);
 
     cv::Point2f center(imageSize.width / 2.0f, imageSize.height / 2.0f);
 
