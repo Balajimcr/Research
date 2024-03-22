@@ -2,12 +2,40 @@
 #define FISHEYE_EFFECT_H
 
 #include <opencv2/opencv.hpp>
+#include <libInterpolate/Interpolators/_2D/BilinearInterpolator.hpp>
+#include <libInterpolate/Interpolators/_2D/BicubicInterpolator.hpp>
+#include <libInterpolate/Interpolators/_2D/ThinPlateSplineInterpolator.hpp>
+
 
 template <typename T>
 const T& clamp(const T& v, const T& lo, const T& hi) {
     return std::max(lo, std::min(v, hi));
 }
 
+namespace _2D {
+    class BilinearInterp : public BilinearInterpolator<double>
+    {
+    public:
+        VectorType getX() { return *(this->X); }
+        VectorType getY() { return *(this->Y); }
+        MatrixType getZ() { return *(this->Z); }
+    };
+
+    class BicubicInterp : public BicubicInterpolator<double>
+    {
+    public:
+        VectorType getX() { return *(this->X); }
+        VectorType getY() { return *(this->Y); }
+        MatrixType getZ() { return *(this->Z); }
+    };
+    class ThinPlateSplineInter : public ThinPlateSplineInterpolator<double>
+    {
+    public:
+        VectorType getX() { return *(this->X); }
+        VectorType getY() { return *(this->Y); }
+        MatrixType getZ() { return *(this->Z); }
+    };
+}
 
 // Struct to represent a 2x2 or 4x4 array of rectangles
 struct RectPoints {
@@ -38,15 +66,22 @@ struct PointCompare {
         return a.y < b.y;
     }
 };
-
+void SaveImage(const cv::Mat& image, const std::string& windowName);
+void displayAndSaveImage(const cv::Mat& image, const std::string& windowName);
+cv::Mat computeDistortionMagnitude(const cv::Mat& grid_x, const cv::Mat& grid_y);
+void Generate_FixedGrid(const cv::Mat& magnitude_of_distortion, std::vector<cv::Point>& GDC_Grid_Points, const int Grid_x, const int Grid_y);
 void Generate_FixedGridMap(cv::Size ImageSize, std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Grid_Points, const int Grid_x, const int Grid_y);
 void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, const int Grid_x, const int Grid_y, const float LowThreshold);
-
+void DrawGrid(cv::Mat mSrc, const int Grid_X, const int Grid_Y);
+void drawGridPoints(const std::vector<cv::Point>& gridPoints, cv::Mat& image, const cv::Scalar& color, int radius, int thickness);
+void drawGridPoints(const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, cv::Mat& image, const cv::Scalar& color, int radius, int thickness);
 bool findGridPointValue(const std::map<cv::Point, cv::Point2f, PointCompare>& gridPoints, const cv::Point& searchPoint, cv::Point2f& outCorrectedPoint);
 bool getTileRectMap(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, RectPoints& cellRect);
 bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, RectPoints& cellRect, RectPoints& cellRectAdaptive);
 bool getTileRectMapFixed(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, std::map<cv::Point, cv::Point2f, PointCompare> GDC_Fixed_Grid_Points, RectPoints& cellRect);
 cv::Point2f bilinearInterpolate(const cv::Point& pt, const RectPoints& cellRect);
+void segmentDistortionMap(const cv::Mat& magnitude_of_distortion, cv::Mat& outputMask, double lowThreshold, double highThreshold);
+
 // ![get-psnr]
 static double getPSNR(const cv::Mat& I1, const cv::Mat& I2)
 {
@@ -67,6 +102,28 @@ static double getPSNR(const cv::Mat& I1, const cv::Mat& I2)
         double mse = sse / (double)(I1.channels() * I1.total());
         double psnr = 10.0 * log10((255 * 255) / mse);
         return psnr;
+    }
+}
+
+
+
+
+// Function to calculate RMSE
+static double calculateRMSE(const cv::Mat& I1, const cv::Mat& I2) {
+    cv::Mat diff;
+    cv::absdiff(I1, I2, diff);
+    diff.convertTo(diff, CV_32F);
+    diff = diff.mul(diff); // Square the difference
+
+    cv::Scalar s = cv::sum(diff);
+    double sse = s.val[0] + s.val[1] + s.val[2];
+
+    if (sse <= 1e-10) {
+        return 0.0;
+    }
+    else {
+        double mse = sse / (double)(I1.channels() * I1.total());
+        return std::sqrt(mse);
     }
 }
 // ![get-psnr]

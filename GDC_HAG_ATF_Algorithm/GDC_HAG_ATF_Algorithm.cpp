@@ -8,153 +8,6 @@
 using namespace cv;
 using namespace std;
 
-// Function to compute distortion magnitude 
-Mat computeDistortionMagnitude(const Mat& grid_x, const Mat& grid_y) {
-    // Validate input matrices
-    if (grid_x.type() != CV_32F || grid_y.type() != CV_32F) {
-        std::cerr << "Both grid_x and grid_y must be of type CV_32F" << std::endl;
-        return Mat();
-    }
-    if (grid_x.size() != grid_y.size()) {
-        std::cerr << "grid_x and grid_y must have the same size" << std::endl;
-        return Mat();
-    }
-
-    // Compute gradients for both channels (grids)
-    Mat grad_x_dx, grad_y_dx, grad_x_dy, grad_y_dy;
-    Sobel(grid_x, grad_x_dx, CV_32F, 1, 0, 3);
-    Sobel(grid_x, grad_y_dx, CV_32F, 0, 1, 3);
-    Sobel(grid_y, grad_x_dy, CV_32F, 1, 0, 3);
-    Sobel(grid_y, grad_y_dy, CV_32F, 0, 1, 3);
-
-    // Compute the magnitude of gradients
-    Mat magnitude_dx, magnitude_dy;
-    magnitude(grad_x_dx, grad_y_dx, magnitude_dx);
-    magnitude(grad_x_dy, grad_y_dy, magnitude_dy);
-
-    // Combine the magnitudes to get the total magnitude of distortion
-    Mat total_magnitude = magnitude_dx + magnitude_dy; // Simple way to combine
-
-    // Optionally, normalize the total magnitude for visualization
-    Mat normalized_magnitude;
-    normalize(total_magnitude, normalized_magnitude, 0, 1, NORM_MINMAX);
-
-    return normalized_magnitude;
-}
-
-// Function for drawing a grid 
-void DrawGrid(cv::Mat mSrc, const int Grid_X, const int Grid_Y) {
-    int width = mSrc.size().width;
-    int height = mSrc.size().height;
-
-    const int cellwidth = width / Grid_X;
-    const int cellheight = width / Grid_X;
-
-
-    for (int i = 0; i < height; i += cellwidth)
-        cv::line(mSrc, Point(0, i), Point(width, i), cv::Scalar(255, 0, 0), 2);
-
-    for (int i = 0; i < width; i += cellheight)
-        cv::line(mSrc, Point(i, 0), Point(i, height), cv::Scalar(255, 0, 0), 2);
-}
-
-// Function to display and save an image
-void displayAndSaveImage(const Mat& image, const string& windowName) {
-    imshow(windowName, image);
-
-    // Construct the filename using the window name and ".png" extension
-    string filename = windowName + ".png";
-    imwrite(filename, image);
-}
-
-// Function to display and save an image
-void SaveImage(const Mat& image, const string& windowName) {
-    // Construct the filename using the window name and ".png" extension
-    string filename = windowName + ".png";
-    imwrite(filename, image);
-}
-
-void drawGridPoints(const vector<Point>& gridPoints, Mat& image, const Scalar& color, int radius, int thickness) {
-
-    // Ensure the image is in a suitable format (like CV_8UC3)
-    if (image.type() != CV_8UC3) {
-        if (image.type() == CV_8UC1) {
-            cvtColor(image, image, COLOR_GRAY2BGR);
-        }
-        else {
-            // Handle other incompatible image types if needed
-            std::cerr << "Error: drawGridPoints expects a CV_8UC3 or CV_8UC1 image." << std::endl;
-            return;
-        }
-    }
-
-    for (const Point& pt : gridPoints) {
-        circle(image, pt, radius, color, thickness);
-    }
-}
-
-void drawGridPoints(const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, Mat& image, const Scalar& color, int radius, int thickness) {
-
-    // Ensure the image is in a suitable format (like CV_8UC3)
-    if (image.type() != CV_8UC3) {
-        if (image.type() == CV_8UC1) {
-            cvtColor(image, image, COLOR_GRAY2BGR);
-        }
-        else {
-            // Handle other incompatible image types if needed
-            std::cerr << "Error: drawGridPoints expects a CV_8UC3 or CV_8UC1 image." << std::endl;
-            return;
-        }
-    }
-
-    // Populate gridPoints and gridPointsMap
-    for (const auto& pair : GDC_Adaptive_Grid_Points) {
-        const cv::Point & pt = pair.first; // Assumes first part of the pair is the grid position
-        circle(image, pt, radius, color, thickness);
-    }
-}
-
-void Generate_FixedGrid(const Mat& magnitude_of_distortion, vector<Point>& GDC_Grid_Points, const int Grid_x, const int Grid_y) {
-    // Input magnitude_of_distortion should be in Range 0-1
-    Mat image = magnitude_of_distortion.clone();
-    image.convertTo(image, CV_8U, 255); // Scale to 0-255 range
-    cvtColor(image, image, COLOR_GRAY2BGR);
-
-    // Step 1: Calculate cell dimensions
-    float cellWidth  = (float)image.cols /  (float)(Grid_x-1);
-    float cellHeight = (float)image.rows /  (float)(Grid_y-1);
-
-    // Step 2: Compute and store only the original grid points 
-    GDC_Grid_Points.clear();
-    for (int i = 0; i < Grid_x; i++) {
-        for (int j = 0; j < Grid_y; j++) {
-            int x = i * cellWidth; // Left Top of cell
-            int y = j * cellHeight;
-
-            // Draw marker for the original position 
-            circle(image, Point(x, y), 1, Scalar(255, 0, 0), 2);
-            GDC_Grid_Points.push_back(Point(x, y)); // Store the original point
-        }
-    }
-
-    SaveImage(image, "3_Fixed Grid Points");
-}
-
-void segmentDistortionMap(const Mat& magnitude_of_distortion, Mat& outputMask, double lowThreshold, double highThreshold) {
-    outputMask = Mat::zeros(magnitude_of_distortion.size(), CV_8UC1); // Initialize segmentation mask
-
-    // Simple Thresholding 
-    Mat lowMask, mediumMask, highMask;
-    inRange(magnitude_of_distortion, 0, lowThreshold, lowMask);
-    inRange(magnitude_of_distortion, lowThreshold, highThreshold, mediumMask);
-    inRange(magnitude_of_distortion, highThreshold, 1.0, highMask);
-    
-    // Assign values to distinguish segments in the output mask
-    outputMask.setTo(0, lowMask);
-    outputMask.setTo(128, mediumMask);
-    outputMask.setTo(255, highMask);
-}
-
 // Helper function to find the most frequent segment value in a region
 int findMostFrequentValue(const Mat& segmentedRegion) {
     std::map<int, int> segmentCounts;
@@ -520,7 +373,7 @@ void writeCSV(string filename, cv::Mat m)
 int main() {
     
     Size ImageSize(1280, 720);
-    int Grid_Size = 35, Grid_Size_FC = 35;
+    int Grid_Size = 33, Grid_Size_FC = 36;
 
     //Grid_Size_FC = Grid_Size;
     
@@ -675,3 +528,4 @@ int main() {
 
     return 0;
 }
+

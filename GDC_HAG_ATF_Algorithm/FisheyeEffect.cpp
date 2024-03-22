@@ -14,6 +14,174 @@ bool findGridPointValue(const std::map<cv::Point, cv::Point2f, PointCompare>& gr
     }
 }
 
+void Generate_FixedGrid(const cv::Mat& magnitude_of_distortion, std::vector<cv::Point>& GDC_Grid_Points, const int Grid_x, const int Grid_y) {
+
+#define Debug 0
+#if Debug  
+    // Input magnitude_of_distortion should be in Range 0-1
+    cv::Mat image = magnitude_of_distortion.clone();
+    if (magnitude_of_distortion.type() == CV_32FC1) {
+        image.convertTo(image, CV_8U, 255); // Scale to 0-255 range
+    }
+    cvtColor(image, image, cv::COLOR_GRAY2BGR);
+#endif
+
+    cv::RNG RandomOffset;
+
+    // Step 1: Calculate cell dimensions
+    float cellWidth = (float)magnitude_of_distortion.cols / (float)(Grid_x - 1);
+    float cellHeight = (float)magnitude_of_distortion.rows / (float)(Grid_y - 1);
+
+    // Step 2: Compute and store only the original grid points 
+    GDC_Grid_Points.clear();
+    for (int i = 0; i < Grid_x; i++) {
+        for (int j = 0; j < Grid_y; j++) {
+            int x = (i * cellWidth ); // Left Top of cell
+            int y = (j * cellHeight);
+
+            if (i != 0 && j != 0 && i != Grid_x - 1 && j != Grid_y - 1) {
+                x += RandomOffset.uniform(0, 10); // Left Top of cell
+                y += RandomOffset.uniform(0, 10);
+            }
+
+            // Boundary checks
+            x = std::max(0, std::min(x, magnitude_of_distortion.cols - 1));
+            y = std::max(0, std::min(y, magnitude_of_distortion.rows - 1));
+
+            // Draw marker for the original position 
+#if Debug  
+            circle(image, cv::Point(x, y), 2, cv::Scalar(255, 0, 0), 2);
+#endif
+            GDC_Grid_Points.push_back(cv::Point(x, y)); // Store the original point
+        }
+    }
+#if Debug
+    cv::imshow("Fixed Grid Points", image);
+#endif
+}
+
+// Function to compute distortion magnitude 
+cv::Mat computeDistortionMagnitude(const cv::Mat& grid_x, const cv::Mat& grid_y) {
+    // Validate input matrices
+    if (grid_x.type() != CV_32F || grid_y.type() != CV_32F) {
+        std::cerr << "Both grid_x and grid_y must be of type CV_32F" << std::endl;
+        return cv::Mat();
+    }
+    if (grid_x.size() != grid_y.size()) {
+        std::cerr << "grid_x and grid_y must have the same size" << std::endl;
+        return cv::Mat();
+    }
+
+    // Compute gradients for both channels (grids)
+    cv::Mat grad_x_dx, grad_y_dx, grad_x_dy, grad_y_dy;
+    Sobel(grid_x, grad_x_dx, CV_32F, 1, 0, 3);
+    Sobel(grid_x, grad_y_dx, CV_32F, 0, 1, 3);
+    Sobel(grid_y, grad_x_dy, CV_32F, 1, 0, 3);
+    Sobel(grid_y, grad_y_dy, CV_32F, 0, 1, 3);
+
+    // Compute the magnitude of gradients
+    cv::Mat magnitude_dx, magnitude_dy;
+    magnitude(grad_x_dx, grad_y_dx, magnitude_dx);
+    magnitude(grad_x_dy, grad_y_dy, magnitude_dy);
+
+    // Combine the magnitudes to get the total magnitude of distortion
+    cv::Mat total_magnitude = magnitude_dx + magnitude_dy; // Simple way to combine
+
+    // Optionally, normalize the total magnitude for visualization
+    cv::Mat normalized_magnitude;
+    normalize(total_magnitude, normalized_magnitude, 0, 1, cv::NORM_MINMAX);
+
+    return normalized_magnitude;
+}
+
+// Function for drawing a grid 
+void DrawGrid(cv::Mat mSrc, const int Grid_X, const int Grid_Y) {
+    int width = mSrc.size().width;
+    int height = mSrc.size().height;
+
+    const int cellwidth = width / Grid_X;
+    const int cellheight = width / Grid_X;
+
+
+    for (int i = 0; i < height; i += cellwidth)
+        cv::line(mSrc, cv::Point(0, i), cv::Point(width, i), cv::Scalar(255, 0, 0), 2);
+
+    for (int i = 0; i < width; i += cellheight)
+        cv::line(mSrc, cv::Point(i, 0), cv::Point(i, height), cv::Scalar(255, 0, 0), 2);
+}
+
+// Function to display and save an image
+void displayAndSaveImage(const cv::Mat& image, const std::string& windowName) {
+    imshow(windowName, image);
+
+    // Construct the filename using the window name and ".png" extension
+    std::string filename = windowName + ".png";
+    imwrite(filename, image);
+}
+
+// Function to display and save an image
+void SaveImage(const cv::Mat& image, const std::string& windowName) {
+    // Construct the filename using the window name and ".png" extension
+    std::string filename = windowName + ".png";
+    imwrite(filename, image);
+}
+
+void drawGridPoints(const std::vector<cv::Point>& gridPoints, cv::Mat& image, const cv::Scalar& color, int radius, int thickness) {
+
+    // Ensure the image is in a suitable format (like CV_8UC3)
+    if (image.type() != CV_8UC3) {
+        if (image.type() == CV_8UC1) {
+            cvtColor(image, image, cv::COLOR_GRAY2BGR);
+        }
+        else {
+            // Handle other incompatible image types if needed
+            std::cerr << "Error: drawGridPoints expects a CV_8UC3 or CV_8UC1 image." << std::endl;
+            return;
+        }
+    }
+
+    for (const cv::Point& pt : gridPoints) {
+        circle(image, pt, radius, color, thickness);
+    }
+}
+
+void segmentDistortionMap(const cv::Mat& magnitude_of_distortion, cv::Mat& outputMask, double lowThreshold, double highThreshold) {
+    outputMask = cv::Mat::zeros(magnitude_of_distortion.size(), CV_8UC1); // Initialize segmentation mask
+
+    // Simple Thresholding 
+    cv::Mat lowMask, mediumMask, highMask;
+    inRange(magnitude_of_distortion, 0, lowThreshold, lowMask);
+    inRange(magnitude_of_distortion, lowThreshold, highThreshold, mediumMask);
+    inRange(magnitude_of_distortion, highThreshold, 1.0, highMask);
+
+    // Assign values to distinguish segments in the output mask
+    outputMask.setTo(0, lowMask);
+    outputMask.setTo(128, mediumMask);
+    outputMask.setTo(255, highMask);
+}
+
+void drawGridPoints(const std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, cv::Mat& image, const cv::Scalar& color, int radius, int thickness) {
+
+    // Ensure the image is in a suitable format (like CV_8UC3)
+    if (image.type() != CV_8UC3) {
+        if (image.type() == CV_8UC1) {
+            cvtColor(image, image, cv::COLOR_GRAY2BGR);
+        }
+        else {
+            // Handle other incompatible image types if needed
+            std::cerr << "Error: drawGridPoints expects a CV_8UC3 or CV_8UC1 image." << std::endl;
+            return;
+        }
+    }
+
+    // Populate gridPoints and gridPointsMap
+    for (const auto& pair : GDC_Adaptive_Grid_Points) {
+        const cv::Point& pt = pair.first; // Assumes first part of the pair is the grid position
+        circle(image, pt, radius, color, thickness);
+    }
+}
+
+
 // Constructor (updated)
 FisheyeEffect::FisheyeEffect(const cv::Size& imageSize) :
     imageSize(imageSize)
@@ -105,6 +273,10 @@ void FisheyeEffect::Generate_FixedGrid(cv::Size ImageSize, std::vector<std::vect
         for (int j = 0; j < Grid_y; ++j) {
             int x = i * cellWidth; 
             int y = j * cellHeight;
+
+            // Boundary checks
+            x = std::max(0, std::min(x, ImageSize.width - 1));
+            y = std::max(0, std::min(y, ImageSize.height - 1));
 
             GDC_Grid_Points[i].push_back(cv::Point(x, y)); // Add points to the i-th row
         }
@@ -575,13 +747,13 @@ std::vector<float> calculateCubicCoefficients(const std::vector<cv::Point2f>& po
 }
 
 // Perform cubic interpolation using coefficients
-float cubicInterpolate(const std::vector<float>& coefficients, float x) {
+float cubicInterpolate(const std::vector<float>& coefficients, const float x) {
     // Assuming coefficients are [a, b, c, d] for ax^3 + bx^2 + cx + d
     return coefficients[0] * pow(x, 3) + coefficients[1] * pow(x, 2) + coefficients[2] * x + coefficients[3];
 }
 
 // Not - Working Bicubic interpolation based on the provided structure and point
-cv::Point2f bicubicInterpolate1(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const RectPoints& cellRect) {
+cv::Point2f bicubicInterpolate(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const RectPoints& cellRect) {
 
     // Assuming cellRect provides a 4x4 neighborhood around the point of interest
     float cellWidth = (float)imageSize.width / (float)(gridSize.x - 1);
@@ -631,7 +803,7 @@ void getCubicCoeffs(float x, float coeffs[4]) {
 }
 
 // Working Function to perform Bicubic Interpolation
-cv::Point2f bicubicInterpolate(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const RectPoints& cellRect) {
+cv::Point2f bicubicInterpolate1(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, const RectPoints& cellRect) {
     
     float cellWidth = (float)imageSize.width / (float)(gridSize.x - 1);
     float cellHeight = (float)imageSize.height / (float)(gridSize.y - 1);
@@ -768,12 +940,20 @@ void FisheyeEffect::generateDistortionMapsfromFixedGrid(
     mapX.setTo(0);
     mapY.setTo(0);
 
+    _2D::BicubicInterp BicubicInterpolate_X;
+    _2D::BicubicInterp BicubicInterpolate_Y;
+
+    int Grid_Size = gridSize.x * gridSize.y;
+
+    _2D::BicubicInterpolator<double>::VectorType x(Grid_Size), y(Grid_Size), GridX(Grid_Size), GridY(Grid_Size);
+
     cv::Point2f center(imageSize.width / 2.0f, imageSize.height / 2.0f);
 
     // Ensure GDC_Fixed_Grid_MapX/Y are the same size as the grid
     GDC_Fixed_Grid_Map.resize(GDC_Fixed_Grid_Points.size());
 
     // First, compute the distortion for fixed grid points
+    int idx = 0;
     for (int i = 0; i < GDC_Fixed_Grid_Points.size(); ++i) {
         GDC_Fixed_Grid_Map[i].resize(GDC_Fixed_Grid_Points[i].size());
         for (int j = 0; j < GDC_Fixed_Grid_Points[i].size(); ++j) {
@@ -783,12 +963,22 @@ void FisheyeEffect::generateDistortionMapsfromFixedGrid(
             float deltaY = (gridPoint.y - center.y) / center.y;
             float distance = (sqrt(deltaX * deltaX + deltaY * deltaY))/2;
             float distortion = 1.0f + distance * distStrength ;
+            float newX = center.x + (deltaX * distortion * center.x);
+            float newY = center.y + (deltaY * distortion * center.y);
 
-            GDC_Fixed_Grid_Map[i][j] = cv::Point2f(center.x + (deltaX * distortion * center.x),
-                center.y + (deltaY * distortion * center.y));
+            GDC_Fixed_Grid_Map[i][j] = cv::Point2f(newX, newY);
+
+            // Fill the Eigen Matrix
+            x(idx) = gridPoint.x;
+            y(idx) = gridPoint.y;
+            GridX(idx) = newX;
+            GridY(idx) = newY;
+            idx++;
         }
     }
 
+    BicubicInterpolate_X.setData(x, y, GridX);
+    BicubicInterpolate_Y.setData(x, y, GridY);
     
     cv::Point PointSrc; // cv::Point Index
     cv::Point GridIndex; // Grid Index
@@ -805,9 +995,14 @@ void FisheyeEffect::generateDistortionMapsfromFixedGrid(
         for (int x = 0; x < imageSize.width; ++x) {
             PointSrc = cv::Point(x, y);
 
+#if 0
             getTileRect(PointSrc, imageSize, gridSize, GDC_Fixed_Grid_Points, GDC_Fixed_Grid_Map, GridIndex, GridRectMap);
 
             CorrectedPoint = bilinearInterpolate(PointSrc, GridRectMap);
+#else
+            CorrectedPoint.x = BicubicInterpolate_X(PointSrc.x, PointSrc.y);
+            CorrectedPoint.y = BicubicInterpolate_Y(PointSrc.x, PointSrc.y);
+#endif
 
             // Assign the interpolated values to the distortion maps
             mapX.at<float>(y, x) = CorrectedPoint.x;
@@ -940,21 +1135,6 @@ double FisheyeEffect::compareDistortionMaps(
     return (mseX + mseY) / 2.0;
 }
 
-static void segmentDistortionMap(const cv::Mat& magnitude_of_distortion, cv::Mat& outputMask, double lowThreshold, double highThreshold) {
-    outputMask = cv::Mat::zeros(magnitude_of_distortion.size(), CV_8UC1); // Initialize segmentation mask
-
-    // Simple Thresholding 
-    cv::Mat lowMask, mediumMask, highMask;
-    inRange(magnitude_of_distortion, 0, lowThreshold, lowMask);
-    inRange(magnitude_of_distortion, lowThreshold, highThreshold, mediumMask);
-    inRange(magnitude_of_distortion, highThreshold, 1.0, highMask);
-
-    // Assign values to distinguish segments in the output mask
-    outputMask.setTo(0, lowMask);
-    outputMask.setTo(128, mediumMask);
-    outputMask.setTo(255, highMask);
-}
-
 // Helper function to find the most frequent segment value in a region
 static int findMostFrequentValue(const cv::Mat& segmentedRegion) {
     std::map<int, int> segmentCounts;
@@ -1008,6 +1188,10 @@ void Generate_FixedGridMap(cv::Size ImageSize, std::map<cv::Point, cv::Point2f, 
             int x = i * cellWidth;
             int y = j * cellHeight;
 
+            // Boundary checks
+            x = std::max(0, std::min(x, ImageSize.width - 1));
+            y = std::max(0, std::min(y, ImageSize.height - 1));
+
             cv::Point gridPoint(x, y);
 
             GDC_Grid_Points[gridPoint] = cv::Point2f(gridPoint); // Initialize with default Point2f
@@ -1021,9 +1205,9 @@ void Generate_FixedGridMap(cv::Size ImageSize, std::map<cv::Point, cv::Point2f, 
 }
 
 void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<cv::Point, cv::Point2f, PointCompare>& GDC_Adaptive_Grid_Points, const int Grid_x, const int Grid_y, const float LowThreshold) {
-    /*cv::Mat normalized_magnitude = magnitude_of_distortion.clone();
+    cv::Mat normalized_magnitude = magnitude_of_distortion.clone();
     normalized_magnitude.convertTo(normalized_magnitude, CV_8U, 255);
-    cvtColor(normalized_magnitude, normalized_magnitude, cv::COLOR_GRAY2BGR);*/
+    cvtColor(normalized_magnitude, normalized_magnitude, cv::COLOR_GRAY2BGR);
 
     cv::Mat Segmented_DistortionMap;
     segmentDistortionMap(magnitude_of_distortion, Segmented_DistortionMap, LowThreshold, 0.98);
@@ -1042,21 +1226,29 @@ void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<c
 
     for (int i = 0; i < Grid_x; i++) {
         for (int j = 0; j < Grid_y; j++) {
-            const int x = i * baseCellWidth;
-            const int y = j * baseCellHeight;
+            int x = i * baseCellWidth;
+            int y = j * baseCellHeight;
+
+            // Boundary checks
+            x = std::max(0, std::min(x, imageWidth - 1));
+            y = std::max(0, std::min(y, imageHeight - 1));
 
             Pt = cv::Point(x, y);
             PtMap = cv::Point2f(static_cast<float>(x), static_cast<float>(y));
             // Commented out the visualization code
-            //circle(normalized_magnitude, cv::Point(x, y), 1, cv::Scalar(255, 0, 0), 2);
+            circle(normalized_magnitude, cv::Point(x, y), 1, cv::Scalar(255, 0, 0), 2);
             GDC_Adaptive_Grid_Points[Pt] = PtMap*-1;
         }
     }
 
     for (int i = 0; i < Grid_x; ++i) {
         for (int j = 0; j < Grid_y; ++j) {
-            const int x = i * baseCellWidth;
-            const int y = j * baseCellHeight;
+            int x = i * baseCellWidth;
+            int y = j * baseCellHeight;
+
+            // Boundary checks
+            x = std::max(0, std::min(x, imageWidth - 1));
+            y = std::max(0, std::min(y, imageHeight - 1));
 
             // Ensure cell boundaries are within image limits
             const float cellWidth = std::min(baseCellWidth, (float)imageWidth - x);
@@ -1068,22 +1260,29 @@ void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<c
             const cv::Mat cellRegion = Segmented_DistortionMap(cellRect);
             const int predominantSegment = findMostFrequentValue(cellRegion);
 
-            const cv::Point newPoint(x + (cellWidth / 2.0), y);
-            const cv::Point newPoint2(x + (cellWidth / 2.0), y + cellHeight);
+            cv::Point newPoint(x + (cellWidth / 2.0), y);
+            cv::Point newPoint2(x + (cellWidth / 2.0), y + cellHeight);
+
+            // Boundary checks
+            newPoint.x = std::max(0, std::min(newPoint.x, imageWidth - 1));
+            newPoint.y = std::max(0, std::min(newPoint.y, imageHeight - 1));
+
+            newPoint2.x = std::max(0, std::min(newPoint2.x, imageWidth - 1));
+            newPoint2.y = std::max(0, std::min(newPoint2.y, imageHeight - 1));
 
             if (predominantSegment >= 128) {
                 GDC_Adaptive_Grid_Points[newPoint]= cv::Point2f(newPoint) * -1;
 
                 if (j == Grid_y - 2) {
-                    //cv::circle(normalized_magnitude, newPoint2, 2, Red, 2);
+                    cv::circle(normalized_magnitude, newPoint2, 2, cv::Scalar(0, 0, 255), 2);
                     GDC_Adaptive_Grid_Points[newPoint2]= cv::Point2f(newPoint2) * -1;
                 }
 
                 if (predominantSegment == 255) { // High Distortion
-                    //circle(normalized_magnitude, newPoint, 1, cv::Scalar(0, 255, 0), 2);
+                    circle(normalized_magnitude, newPoint, 1, cv::Scalar(0, 255, 0), 2);
                 }
                 else {
-                    //circle(normalized_magnitude, newPoint, 1, cv::Scalar(0, 255, 255), 2);
+                    circle(normalized_magnitude, newPoint, 1, cv::Scalar(0, 255, 255), 2);
                 }
             }
         }
@@ -1091,6 +1290,7 @@ void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<c
 
     // Commented out the display call
     //cv::imwrite("4.1_Adaptive Grid Points.png", normalized_magnitude);
+    displayAndSaveImage(normalized_magnitude, "4.1_Adaptive Grid Points");
 
     int Nearest_GridSize = findNearestSquareRoot((int)GDC_Adaptive_Grid_Points.size());
 
@@ -1101,44 +1301,6 @@ void Generate_AdaptiveGridMap(const cv::Mat& magnitude_of_distortion, std::map<c
         Nearest_GridSize, Nearest_GridSize); // Dimensions of the nearest square grid
 
 }
-
-// Function to compute distortion magnitude 
-static cv::Mat computeDistortionMagnitude(const cv::Mat& grid_x, const cv::Mat& grid_y) {
-    // Validate input matrices
-    if (grid_x.type() != CV_32F || grid_y.type() != CV_32F) {
-        std::cerr << "Both grid_x and grid_y must be of type CV_32F" << std::endl;
-        return cv::Mat();
-    }
-    if (grid_x.size() != grid_y.size()) {
-        std::cerr << "grid_x and grid_y must have the same size" << std::endl;
-        return cv::Mat();
-    }
-
-    // Compute gradients for both channels (grids)
-    cv::Mat grad_x_dx, grad_y_dx, grad_x_dy, grad_y_dy;
-    Sobel(grid_x, grad_x_dx, CV_32F, 1, 0, 3);
-    Sobel(grid_x, grad_y_dx, CV_32F, 0, 1, 3);
-    Sobel(grid_y, grad_x_dy, CV_32F, 1, 0, 3);
-    Sobel(grid_y, grad_y_dy, CV_32F, 0, 1, 3);
-
-    // Compute the magnitude of gradients
-    cv::Mat magnitude_dx, magnitude_dy;
-    magnitude(grad_x_dx, grad_y_dx, magnitude_dx);
-    magnitude(grad_x_dy, grad_y_dy, magnitude_dy);
-
-    // Combine the magnitudes to get the total magnitude of distortion
-    cv::Mat total_magnitude = magnitude_dx + magnitude_dy; // Simple way to combine, might need adjustment based on your definition of distortion
-
-    // Optionally, normalize the total magnitude for visualization
-    cv::Mat normalized_magnitude;
-    normalize(total_magnitude, normalized_magnitude, 0, 1, cv::NORM_MINMAX);
-
-    return normalized_magnitude;
-}
-
-
-// A more descriptive name to reflect the functionality
-
 
 
 void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
@@ -1158,8 +1320,17 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
 
     cv::Point2f center(imageSize.width / 2.0f, imageSize.height / 2.0f);
 
+    _2D::ThinPlateSplineInter BicubicInterpolate_X;
+    _2D::ThinPlateSplineInter BicubicInterpolate_Y;
+
+    int Grid_Size = GDC_Adaptive_Grid_Points.size();
+
+    _2D::ThinPlateSplineInterpolator<double>::VectorType x(Grid_Size), y(Grid_Size), GridX(Grid_Size), GridY(Grid_Size);
+
+
     //printf("Performing Grip Map Computation!\n");
     // Compute the distortion for variable grid points
+    int idx = 0;
     for (auto& pair : GDC_Adaptive_Grid_Points) {
         const cv::Point gridPoint = pair.first;
         cv::Point2f& gridPointMap = pair.second;
@@ -1168,11 +1339,22 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
         float deltaY = (gridPoint.y - center.y) / center.y;
         float distance = (sqrt(deltaX * deltaX + deltaY * deltaY))/2;
         float distortion = 1.0f + distance * distStrength ;
+        float newX = center.x + (deltaX * distortion * center.x);
+        float newY = center.y + (deltaY * distortion * center.y);
 
-        gridPointMap = cv::Point2f(center.x + (deltaX * distortion * center.x),
-            center.y + (deltaY * distortion * center.y));
+        gridPointMap = cv::Point2f(newX,newY);
+
+        // Fill the Eigen Matrix
+        x(idx) = gridPoint.x;
+        y(idx) = gridPoint.y;
+        GridX(idx) = newX;
+        GridY(idx) = newY;
+        idx++;
 
     }
+
+    BicubicInterpolate_X.setData(x, y, GridX);
+    BicubicInterpolate_Y.setData(x, y, GridY);
 
     cv::Point PointSrc; // cv::Point Index
     RectPoints GridRectMap, GridRectMapAdaptive;
@@ -1186,19 +1368,23 @@ void FisheyeEffect::generateDistortionMapsfromAdaptiveGridMap(
             
             if (!findGridPointValue(GDC_Adaptive_Grid_Points, PointSrc, CorrectedPoint)) {
 
-                if (method == InterpolationMethod::BILINEAR) {
-                    if (getTileRectMap(PointSrc, imageSize, gridSize, GDC_Adaptive_Grid_Points, GridRectMap)) {
-                        // bilinear interpolation logic
-                        CorrectedPoint = bilinearInterpolate(PointSrc, GridRectMap);
-                    }
-                }
-                else
-                {
-                    if (getTileRectMap4x4(PointSrc, imageSize, gridSize, GDC_Adaptive_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
-                        // BiCubic interpolation logic
-                        CorrectedPoint = bicubicInterpolate(PointSrc, imageSize, gridSize, GridRectMap);
-                    }
-                }
+
+                CorrectedPoint.x = BicubicInterpolate_X(PointSrc.x, PointSrc.y);
+                CorrectedPoint.y = BicubicInterpolate_Y(PointSrc.x, PointSrc.y);
+
+                //if (method == InterpolationMethod::BILINEAR) {
+                //    if (getTileRectMap(PointSrc, imageSize, gridSize, GDC_Adaptive_Grid_Points, GridRectMap)) {
+                //        // bilinear interpolation logic
+                //        CorrectedPoint = bilinearInterpolate(PointSrc, GridRectMap);
+                //    }
+                //}
+                //else
+                //{
+                //    if (getTileRectMap4x4(PointSrc, imageSize, gridSize, GDC_Adaptive_Grid_Points, GridRectMap, GridRectMapAdaptive)) {
+                //        // BiCubic interpolation logic
+                //        CorrectedPoint = bicubicInterpolate(PointSrc, imageSize, gridSize, GridRectMap);
+                //    }
+                //}
             }
 
             // Assign the interpolated values to the distortion maps

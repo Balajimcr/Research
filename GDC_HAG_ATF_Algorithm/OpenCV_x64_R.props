@@ -5,7 +5,7 @@
   <PropertyGroup />
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\Library\OpenCV\opencv\build\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Library\OpenCV\opencv\build\include;D:\Library\OpenCV\depends\boost_1_85;D:\Library\OpenCV\depends\eigen-3.4.0;D:\Project_Files\Research\GDC_HAG_ATF_Algorithm\libInterpolate\install\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalDependencies>D:\Library\OpenCV\opencv\build\x64\vc16\lib\opencv_world490.lib;%(AdditionalDependencies)</AdditionalDependencies>
