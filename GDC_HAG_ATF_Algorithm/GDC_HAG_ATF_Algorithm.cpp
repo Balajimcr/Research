@@ -373,7 +373,7 @@ void writeCSV(string filename, cv::Mat m)
 int main() {
     
     Size ImageSize(1280, 720);
-    int Grid_Size = 33, Grid_Size_FC = 36;
+    int Grid_Size = 30, Grid_Size_FC = 33;
 
     //Grid_Size_FC = Grid_Size;
     
