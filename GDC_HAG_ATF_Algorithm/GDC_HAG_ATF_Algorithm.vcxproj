@@ -65,13 +65,16 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="OpenCV_x64_D.props" />
+    <Import Project="OpenCV490_x64_D.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="OpenCV_x64_R.props" />
+    <Import Project="OpenCV490_x64_R.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetName>$(ProjectName)1</TargetName>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -133,10 +136,12 @@
     <ClInclude Include="ImageUtils.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="BitDepth6Bit.cpp" />
     <ClCompile Include="FisheyeEffect.cpp" />
     <ClCompile Include="GDC_HAG_ATF_Algorithm.cpp" />
     <ClCompile Include="ImageUtils.cpp" />
     <ClCompile Include="BitDepthScaling.cpp" />
+    <ClCompile Include="Test_ATF.cpp" />
     <ClCompile Include="Test_Interpolation.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

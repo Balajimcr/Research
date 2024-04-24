@@ -120,6 +120,20 @@ void displayAndSaveImage(const cv::Mat& image, const std::string& windowName) {
 }
 
 // Function to display and save an image
+void displayAndSaveImage(const cv::Mat& image, const std::string& windowName,const bool SaveCSV) {
+    imshow(windowName, image);
+
+    // Construct the filename using the window name and ".png" extension
+    std::string filename = windowName + ".png";
+    imwrite(filename, image);
+
+    if (SaveCSV) {
+        filename = windowName + ".csv";
+        writeCSV(filename,image);
+    }
+}
+
+// Function to display and save an image
 void SaveImage(const cv::Mat& image, const std::string& windowName) {
     // Construct the filename using the window name and ".png" extension
     std::string filename = windowName + ".png";
@@ -1404,14 +1418,7 @@ void FisheyeEffect::computeDistortionMapsfromAdaptiveGridMap(cv::Point GridSize,
 
     InterpolationMethod interpolation = InterpolationMethod::BICUBIC;
 
-    if (interpolation == InterpolationMethod::BICUBIC) {
-        printf("Adaptive Grid : Bicubic Interpolation\n");
-    }
-    else
-    {
-        printf("Adaptive Grid : Bilinear Interpolation\n");
-    }
-    
+        
     Generate_AdaptiveGridMap(distortionMagnitude, GDC_Adaptive_Grid_Points, GridSize.x, GridSize.y,LowThreshold);
 
     generateDistortionMapsfromAdaptiveGridMap(imageSize, GridSize, distStrength, GDC_Adaptive_Grid_Points, this->mapX, this->mapY, interpolation);

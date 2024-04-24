@@ -7,27 +7,25 @@ using namespace std;
 
 // Constants for bit depth conversion
 const int   BIT_SHIFT = 2;
-const float MAX_10BIT = pow(2,10)-1;
-const float MAX_8BIT = pow(2, 8) -1;
-const float SCALE_FACTOR_10Bit = MAX_10BIT / MAX_8BIT;
+const float MAX_10BIT = pow(2,10);
+const float MAX_8BIT = pow(2, 8);
+const float SCALE_FACTOR_8BitTo10Bit = (MAX_10BIT) / (MAX_8BIT);
 
 
 // Function to display and save an image
 static void displayAndSave10BitImage(const Mat& image_10Bit, const string& windowName) {
     cv::Mat image_8Bit;
-    convertScaleAbs(image_10Bit, image_8Bit, 1.0 / 4.0);
+    convertScaleAbs(image_10Bit, image_8Bit, 0.25);
 
     imshow(windowName, image_8Bit);
 
     // Construct the filename using the window name and ".png" extension
     string filename = windowName + ".png";
     imwrite(filename, image_8Bit);
-}
 
-Mat convert10BitTo8Bit(const Mat& image_10Bit) {
-    Mat image_8Bit;
-    convertScaleAbs(image_10Bit, image_8Bit, 1.0 / 4.0);
-    return image_8Bit;
+    filename = windowName + ".csv";
+
+    writeCSV(filename, image_10Bit);
 }
 
 Mat convert10BitTo8Bit(const Mat& image_10Bit, bool useScaling) {
@@ -44,29 +42,48 @@ Mat convert10BitTo8Bit(const Mat& image_10Bit, bool useScaling) {
     return image_8Bit;
 }
 
-
 Mat convert8BitTo10Bit(const Mat& image_8Bit, bool useScaling) {
-    Mat image_10Bit(image_8Bit.size(), CV_16UC1);
-    for (int y = 0; y < image_8Bit.rows; ++y) {
-        uchar* rowPtr_8bit = (uchar*)image_8Bit.ptr<uchar>(y);
-        ushort* rowPtr_10bit = image_10Bit.ptr<ushort>(y);
-        for (int x = 0; x < image_8Bit.cols; ++x) {
-            rowPtr_10bit[x] = useScaling ? saturate_cast<ushort>(rowPtr_8bit[x] * SCALE_FACTOR_10Bit) : // Use scaling for conversion
-                                           rowPtr_8bit[x] << BIT_SHIFT;                                 // Use bit-shifting for conversion
-        }
+   
+    Mat image_10Bit;
+    if (useScaling) {
+        // Convert using scaling
+        image_8Bit.convertTo(image_10Bit, CV_16U, SCALE_FACTOR_8BitTo10Bit);
     }
+    else {
+        // Convert using bit-shifting
+        image_8Bit.convertTo(image_10Bit, CV_16U, 1.0, 0.0); // First convert types without scaling
+        image_10Bit.forEach<ushort>([](ushort& pixel, const int* position) -> void {
+            pixel = pixel << BIT_SHIFT; // Apply bit shift
+            });
+    }
+
     return image_10Bit;
 }
 
-void calculateErrorMetrics(const Mat& original, const Mat& converted, double& rmse, double& psnr) {
+void calculateErrorMetrics(const Mat& original, const Mat& converted, double& rmse, double& psnr, int maxBitValue) {
+    // Ensure the images have the same dimensions and type
+    CV_Assert(original.size() == converted.size() && original.type() == converted.type());
+
+    // Calculate the absolute difference between the images
     Mat diff;
     absdiff(original, converted, diff);
-    diff.convertTo(diff, CV_32F);
-    diff = diff.mul(diff);
+    diff.convertTo(diff, CV_32F);  // Convert differences to float to avoid overflow
+    diff = diff.mul(diff);  // Squaring the differences
 
+    // Calculate the Mean Squared Error (MSE)
     Scalar mse = mean(diff);
+
+    // Calculate the Root Mean Square Error (RMSE)
     rmse = sqrt(mse[0]);
-    psnr = 20 * log10(MAX_10BIT-1) - 10 * log10(mse[0]);
+
+    // Handle the case when the MSE is 0 (images are identical)
+    if (mse[0] == 0) {
+        psnr = std::numeric_limits<double>::infinity();
+    }
+    else {
+        double maxPixelValue = static_cast<double>(maxBitValue);
+        psnr = 20 * log10(maxPixelValue) - 10 * log10(mse[0]);
+    }
 }
 
 void Test10bitTo8BitConversion(cv::Mat img_10bit) {
@@ -98,7 +115,7 @@ void Test10bitTo8BitConversion(cv::Mat img_10bit) {
     }
 }
 
-int TestConvertscaleAbs() {
+int mainTestBitDepth() {
     // Create a 10-bit gradient image (1024x100)
     Size ImageSize(MAX_10BIT, 300);
     Mat img_10bit(ImageSize, CV_16UC1);
@@ -113,10 +130,11 @@ int TestConvertscaleAbs() {
 
     cout << "8 Bit to 10 - Bit Conversion! \n" << endl;
 
-    Mat img_8bit = convert10BitTo8Bit(img_10bit);
+    Mat img_8bit = convert10BitTo8Bit(img_10bit,false);
     Mat img_10bit_shift = convert8BitTo10Bit(img_8bit, false);
     Mat img_10bit_scale = convert8BitTo10Bit(img_8bit, true);
 
+    displayAndSave10BitImage(img_10bit, "img_10bit_GroundTruth");
     displayAndSave10BitImage(img_10bit_shift, "img_10bit_shift"); 
     displayAndSave10BitImage(img_10bit_scale, "img_10bit_scale");
 
@@ -125,8 +143,8 @@ int TestConvertscaleAbs() {
     double scale_rmse = 0.0;
     double scale_psnr = 0.0;
 
-    calculateErrorMetrics(img_10bit, img_10bit_shift, shift_rmse, shift_psnr);
-    calculateErrorMetrics(img_10bit, img_10bit_scale, scale_rmse, scale_psnr);
+    calculateErrorMetrics(img_10bit, img_10bit_shift, shift_rmse, shift_psnr,10);
+    calculateErrorMetrics(img_10bit, img_10bit_scale, scale_rmse, scale_psnr,10);
 
     Mat img_10bit_diff;
     absdiff(img_10bit_shift, img_10bit_scale, img_10bit_diff);

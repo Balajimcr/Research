@@ -1,6 +1,7 @@
 #ifndef FISHEYE_EFFECT_H
 #define FISHEYE_EFFECT_H
 
+#include <fstream>
 #include <opencv2/opencv.hpp>
 #include <libInterpolate/Interpolators/_2D/BilinearInterpolator.hpp>
 #include <libInterpolate/Interpolators/_2D/BicubicInterpolator.hpp>
@@ -81,7 +82,16 @@ bool getTileRectMap4x4(const cv::Point& pt, const cv::Size& imageSize, const cv:
 bool getTileRectMapFixed(const cv::Point& pt, const cv::Size& imageSize, const cv::Point& gridSize, std::map<cv::Point, cv::Point2f, PointCompare> GDC_Fixed_Grid_Points, RectPoints& cellRect);
 cv::Point2f bilinearInterpolate(const cv::Point& pt, const RectPoints& cellRect);
 void segmentDistortionMap(const cv::Mat& magnitude_of_distortion, cv::Mat& outputMask, double lowThreshold, double highThreshold);
+// Function to display and save an image
+void displayAndSaveImage(const cv::Mat& image, const std::string& windowName, const bool SaveCSV);
 
+static void writeCSV(std::string filename, cv::Mat m)
+{
+    std::ofstream myfile;
+    myfile.open(filename.c_str());
+    myfile << cv::format(m, cv::Formatter::FMT_CSV) << std::endl;
+    myfile.close();
+}
 // ![get-psnr]
 static double getPSNR(const cv::Mat& I1, const cv::Mat& I2)
 {

@@ -1,4 +1,5 @@
 #include <opencv2/opencv.hpp>
+#include <opencv2/ximgproc.hpp>
 #include <iostream>
 #include <fstream>
 #include <random> // Include for random number generation
@@ -362,13 +363,52 @@ std::vector<cv::Size> findPerfectGrids(const cv::Size & imageSize) {
     return perfectGrids;
 }
 
-void writeCSV(string filename, cv::Mat m)
-{
-    std::ofstream myfile;
-    myfile.open(filename.c_str());
-    myfile << cv::format(m, cv::Formatter::FMT_CSV) << std::endl;
-    myfile.close();
+
+void ApplyAdaptiveTileFilter(cv::Mat& mSrc, const cv::Mat& magnitude_of_distortion, const float lowThreshold, const float highThreshold) {
+    printf("Performing ApplyAdaptiveTileFilter\n");
+
+    // Thresholding to create medium and high distortion masks
+    cv::Mat mediumMask, highMask;
+    cv::inRange(magnitude_of_distortion, cv::Scalar(lowThreshold), cv::Scalar(highThreshold), mediumMask);
+    cv::inRange(magnitude_of_distortion, cv::Scalar(highThreshold), cv::Scalar(1.0), highMask);
+
+    // Optional: Apply Gaussian blur to masks for smoother transitions
+    int blurSize = 3; // Adjust for smoothing
+    cv::GaussianBlur(mediumMask, mediumMask, cv::Size(blurSize, blurSize), 0);
+    cv::GaussianBlur(highMask, highMask, cv::Size(blurSize, blurSize), 0);
+
+    // Apply bilateral filter with optimized parameters
+    cv::Mat tempMedium, tempHigh;
+    cv::ximgproc::jointBilateralFilter(mSrc, mSrc, tempMedium, 1, 50, 50);
+    cv::ximgproc::jointBilateralFilter(mSrc, mSrc, tempHigh, 3, 75, 75);
+
+    // Apply guided filtering with adjusted parameters
+    int r_medium = 2;
+    int r_high = 4;
+    double eps_medium = 0.1 * 0.1 * 255 * 255;
+    double eps_high = 0.2 * 0.2 * 255 * 255;
+
+    cv::ximgproc::guidedFilter(tempMedium, mSrc, tempMedium, r_medium, eps_medium);
+    cv::ximgproc::guidedFilter(tempHigh, mSrc, tempHigh, r_high, eps_high);
+
+    // Create combined images with Poisson blending
+    cv::Mat blendedMedium, blendedHigh;
+    cv::Point center(mSrc.cols / 2, mSrc.rows / 2); // Center for Poisson blending
+
+    cv::seamlessClone(tempMedium, mSrc, mediumMask, center, blendedMedium, cv::NORMAL_CLONE); // Blend medium-distortion regions
+    cv::seamlessClone(tempHigh, mSrc, highMask, center, blendedHigh, cv::NORMAL_CLONE);       // Blend high-distortion regions
+
+    // Combine results based on the masks
+    cv::Mat result = mSrc.clone();
+    blendedMedium.copyTo(result, mediumMask); // Apply medium regions
+    blendedHigh.copyTo(result, highMask);     // Apply high regions
+
+    result.copyTo(mSrc); // Return the result to the source image
+
+    printf("[Success] Completed ApplyAdaptiveTileFilter\n");
 }
+
+
 
 int main() {
     
@@ -381,11 +421,14 @@ int main() {
 
     Mat srcImage(ImageSize, CV_8UC3, Scalar::all(255));
     DrawGrid(srcImage, 35, 35);
+
+    srcImage = imread("C:/Users/balaj/Pictures/Camera_2172x1448.jpg", 1);
+    ImageSize = srcImage.size();
     
     int interpolation= INTER_LANCZOS4;
     int borderMode = BORDER_REFLECT;
 
-    const double distStrength = 1.5;
+    const double distStrength = 0.75;
     const float LowThreshold = 0.85;
 
     double  rms_error_FixedGrid, rms_error_AdaptiveGrid;
@@ -427,34 +470,13 @@ int main() {
     std::cout << "Total No of Points \t Fixed Grid : " << Total_points_FixedGrid
         << " \t Variable Grid : " << Total_points_VariableGrid
         << " : Saved : " << Points_Diff << " Points (" << Saved_Percentage << "%)" << std::endl;
-#if 0
-
-    /*std::map<cv::Point, cv::Point2f, PointCompare> GDC_mFixed_Grid_Points;
-
-    Generate_FixedGridMap(ImageSize, GDC_mFixed_Grid_Points, Grid_FG.x, Grid_FG.y);
-
-    Test_FindNearestPointsinFixedGridMap2x2(ImageSize, Grid_FG, GDC_mFixed_Grid_Points);*/
-
-    /*std::map<cv::Point, cv::Point2f, PointCompare> GDC_Adaptive_Grid_Points;
-    Generate_AdaptiveGridMap(distortionMagnitude, GDC_Adaptive_Grid_Points, Grid.x, Grid.y, LowThreshold);
-
-    Test_FindNearestPointsinAdaptiveGridMap2x2(ImageSize, Grid, GDC_Adaptive_Grid_Points);*/
-
-    std::map<cv::Point, cv::Point2f, PointCompare> GDC_Adaptive_Grid_Points;
-    Generate_AdaptiveGridMap(distortionMagnitude, GDC_Adaptive_Grid_Points, Grid.x, Grid.y,LowThreshold);
-
-    Test_FindNearestPointsinAdaptiveGridMap4x4(ImageSize, Grid, GDC_Adaptive_Grid_Points);
-
-    waitKey(0);
-    return 0;
-#endif
 
     // Display and save the images
-    //SaveImage(srcImage, "0_Source Image");
     SaveImage(distortedImage_GT, "1_Distorted Image");
-    //imwrite("2_Magnitude of Distortion.png", distortionMagnitude * 255);
 
-#if 1
+    SaveImage(distortionMagnitude*255, "distortionMagnitude");
+
+#if 0
 
     Mat Map_x_FG, Map_y_FG;
 
@@ -524,6 +546,24 @@ int main() {
     }
 
 #endif
+
+    // Adaptive Tile Filtering (ATF)
+
+    //Mat mSrc = distortedImage_AdaptiveGrid.clone();
+
+    Mat mSrc = imread("3_Distorted Image Adaptive Grid.png", 1);
+
+    if (mSrc.empty()) {
+        std::cout << "[Error] Invalid Image!\n";
+        return 0;
+    }
+
+    imshow("Input Image", mSrc);
+
+    ApplyAdaptiveTileFilter(mSrc, distortionMagnitude, LowThreshold, 0.98);
+
+    displayAndSaveImage(mSrc, "ATF_Image");
+
     waitKey(0);
 
     return 0;
