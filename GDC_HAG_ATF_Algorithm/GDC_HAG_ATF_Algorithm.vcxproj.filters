@@ -32,16 +32,10 @@
     <ClCompile Include="ImageUtils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="BitDepthScaling.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Test_Interpolation.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Test_ATF.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="BitDepth6Bit.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

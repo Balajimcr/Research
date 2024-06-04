@@ -422,13 +422,13 @@ int main() {
     Mat srcImage(ImageSize, CV_8UC3, Scalar::all(255));
     DrawGrid(srcImage, 35, 35);
 
-    srcImage = imread("C:/Users/balaj/Pictures/Camera_2172x1448.jpg", 1);
-    ImageSize = srcImage.size();
+    /*srcImage = imread("C:/Users/balaj/Pictures/Camera_2172x1448.jpg", 1);
+    ImageSize = srcImage.size();*/
     
     int interpolation= INTER_LANCZOS4;
     int borderMode = BORDER_REFLECT;
 
-    const double distStrength = 0.75;
+    const double distStrength = 2.75;
     const float LowThreshold = 0.85;
 
     double  rms_error_FixedGrid, rms_error_AdaptiveGrid;
@@ -476,7 +476,7 @@ int main() {
 
     SaveImage(distortionMagnitude*255, "distortionMagnitude");
 
-#if 0
+#if 1
 
     Mat Map_x_FG, Map_y_FG;
 
@@ -546,6 +546,7 @@ int main() {
     }
 
 #endif
+
 
     // Adaptive Tile Filtering (ATF)
 

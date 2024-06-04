@@ -5,10 +5,11 @@
   <PropertyGroup />
   <ItemDefinitionGroup>
     <Link>
-      <AdditionalDependencies>D:\Library\OpenCV\opencv\build\x64\vc16\lib\opencv_world490d.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opencv_alphamat490d.lib;opencv_aruco490d.lib;opencv_bgsegm490d.lib;opencv_bioinspired490d.lib;opencv_calib3d490d.lib;opencv_ccalib490d.lib;opencv_core490d.lib;opencv_datasets490d.lib;opencv_dnn490d.lib;opencv_dnn_objdetect490d.lib;opencv_dnn_superres490d.lib;opencv_dpm490d.lib;opencv_face490d.lib;opencv_features2d490d.lib;opencv_flann490d.lib;opencv_fuzzy490d.lib;opencv_gapi490d.lib;opencv_hfs490d.lib;opencv_highgui490d.lib;opencv_imgcodecs490d.lib;opencv_imgproc490d.lib;opencv_img_hash490d.lib;opencv_intensity_transform490d.lib;opencv_line_descriptor490d.lib;opencv_mcc490d.lib;opencv_ml490d.lib;opencv_objdetect490d.lib;opencv_optflow490d.lib;opencv_phase_unwrapping490d.lib;opencv_photo490d.lib;opencv_plot490d.lib;opencv_quality490d.lib;opencv_rapid490d.lib;opencv_reg490d.lib;opencv_rgbd490d.lib;opencv_saliency490d.lib;opencv_shape490d.lib;opencv_signal490d.lib;opencv_stereo490d.lib;opencv_stitching490d.lib;opencv_structured_light490d.lib;opencv_superres490d.lib;opencv_surface_matching490d.lib;opencv_text490d.lib;opencv_tracking490d.lib;opencv_video490d.lib;opencv_videoio490d.lib;opencv_videostab490d.lib;opencv_wechat_qrcode490d.lib;opencv_xfeatures2d490d.lib;opencv_ximgproc490d.lib;opencv_xobjdetect490d.lib;opencv_xphoto490d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\D\Libraries\OpenCV\opencv-master\opencv\install\x64\vc17\lib</AdditionalLibraryDirectories>
     </Link>
     <ClCompile>
-      <AdditionalIncludeDirectories>D:\Library\OpenCV\opencv\build\include;D:\Library\OpenCV\depends\boost_1_85;D:\Library\OpenCV\depends\eigen-3.4.0;D:\Project_Files\Research\GDC_HAG_ATF_Algorithm\libInterpolate\install\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\D\Project_Files\Samsung\Research\GDC_HAG_ATF_Algorithm\libInterpolate\install\include;C:\D\Libraries\OpenCV\opencv-master\opencv\install\include;C:\D\Libraries\OpenCV\depends\boost;C:\D\Libraries\OpenCV\depends\eigen-3.4.0</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup />
