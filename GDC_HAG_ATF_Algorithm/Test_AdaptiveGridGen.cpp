@@ -13,10 +13,12 @@ using namespace std;
 
 // QuadTree Node Structure
 struct QuadTreeNode {
-    int x0, y0, x1, y1; // Region bounds
+    int x0, y0, x1, y1;
     bool isLeaf;
-    QuadTreeNode* children[4] = { nullptr, nullptr, nullptr, nullptr }; // Top-left, top-right, bottom-left, bottom-right
+    QuadTreeNode* children[4] = { nullptr, nullptr, nullptr, nullptr };
+    int depth;  // Added: store current depth level
 };
+
 
 void addPointIfNotPresent(std::vector<cv::Point>& points, const cv::Point& point) {
     if (std::find(points.begin(), points.end(), point) == points.end()) {
@@ -163,31 +165,15 @@ static void Generate_AdaptiveGrid(const Mat& magnitude_of_distortion, vector<Poi
     cv::waitKey();
 #endif
 }
+QuadTreeNode* buildQuadTree(const cv::Mat& gradientMap, int x0, int y0, int x1, int y1, float threshold, int currentDepth, int maxDepth) {
+    QuadTreeNode* node = new QuadTreeNode{ x0, y0, x1, y1, true, {nullptr, nullptr, nullptr, nullptr}, currentDepth };
 
-void extractLeafCorners(QuadTreeNode* node, std::vector<cv::Point>& adaptiveGridPoints) {
-    if (!node) return;
-
-    if (node->isLeaf) {
-        addPointIfNotPresent(adaptiveGridPoints, cv::Point(node->x0, node->y0));
-        addPointIfNotPresent(adaptiveGridPoints, cv::Point(node->x1 - 1, node->y0));
-        addPointIfNotPresent(adaptiveGridPoints, cv::Point(node->x0, node->y1 - 1));
-        addPointIfNotPresent(adaptiveGridPoints, cv::Point(node->x1 - 1, node->y1 - 1));
-    }
-    else {
-        for (auto& child : node->children) {
-            extractLeafCorners(child, adaptiveGridPoints);
-        }
-    }
-}
-
-
-QuadTreeNode* buildQuadTree(const cv::Mat& gradientMap, int x0, int y0, int x1, int y1, float threshold, int maxDepth) {
-    QuadTreeNode* node = new QuadTreeNode{ x0, y0, x1, y1, true };
-
-    if (maxDepth <= 0 || (x1 - x0) <= 1 || (y1 - y0) <= 1) {
+    // Stop subdivision if depth limit is reached
+    if (currentDepth >= maxDepth) {
         return node;
     }
-    
+
+    // Calculate maximum gradient in the region
     double maxGrad = 0.0;
     for (int y = y0; y < y1; ++y) {
         for (int x = x0; x < x1; ++x) {
@@ -195,37 +181,71 @@ QuadTreeNode* buildQuadTree(const cv::Mat& gradientMap, int x0, int y0, int x1, 
         }
     }
 
+    // Subdivide further if gradient exceeds the threshold
     if (maxGrad > threshold) {
         node->isLeaf = false;
 
         const int midX = (x0 + x1) / 2;
         const int midY = (y0 + y1) / 2;
 
-        node->children[0] = buildQuadTree(gradientMap, x0, y0, midX, midY, threshold, maxDepth - 1);
-        node->children[1] = buildQuadTree(gradientMap, midX, y0, x1, midY, threshold, maxDepth - 1);
-        node->children[2] = buildQuadTree(gradientMap, x0, midY, midX, y1, threshold, maxDepth - 1);
-        node->children[3] = buildQuadTree(gradientMap, midX, midY, x1, y1, threshold, maxDepth - 1);
+        // Recursively build child nodes
+        node->children[0] = buildQuadTree(gradientMap, x0, y0, midX, midY, threshold, currentDepth + 1, maxDepth);
+        node->children[1] = buildQuadTree(gradientMap, midX, y0, x1, midY, threshold, currentDepth + 1, maxDepth);
+        node->children[2] = buildQuadTree(gradientMap, x0, midY, midX, y1, threshold, currentDepth + 1, maxDepth);
+        node->children[3] = buildQuadTree(gradientMap, midX, midY, x1, y1, threshold, currentDepth + 1, maxDepth);
     }
 
     return node;
 }
 
-void Generate_UniformAndAdaptiveGrid(const cv::Mat& distortionMagnitude, std::vector<cv::Point>& gridPoints, int gridX, int gridY, float threshold, int maxDepth) {
+void extractLeafCorners(QuadTreeNode* node, std::vector<cv::Point>& gridPoints) {
+    if (!node) return;
+
+    if (node->isLeaf) {
+
+        int width = node->x1 - node->x0;
+        int height = node->y1 - node->y0;
+
+        int midX = node->x0 + width / 2;
+        int midY = node->y0 + height / 2;
+
+        //gridPoints.emplace_back(midX, midY);
+        // Add corners of the leaf region (always)
+        gridPoints.emplace_back(node->x0, node->y0);     // Top-left
+        //gridPoints.emplace_back(node->x1 - 1, node->y0);     // Top-right
+        //gridPoints.emplace_back(node->x0, node->y1 - 1); // Bottom-left
+        //gridPoints.emplace_back(node->x1 - 1, node->y1 - 1); // Bottom-right
+
+        // If this leaf is at a depth > 0, it means we subdivided due to high gradient.
+        // Add additional points to double the density.
+        if (node->depth > 0) {
+            // Add mid-edge points
+            gridPoints.emplace_back(midX, midY);        // midpoint            
+        }
+    }
+    else {
+        for (auto& child : node->children) {
+            extractLeafCorners(child, gridPoints);
+        }
+    }
+}
+
+void Generate_UniformAndAdaptiveGrid(const cv::Mat& distortionMagnitude,
+    std::vector<cv::Point>& gridPoints,
+    int gridX, int gridY, float threshold, int maxDepth) {
     cv::Mat gradientMap = distortionMagnitude.clone();
 
-    // Uniform base grid
     const int imageWidth = distortionMagnitude.cols;
     const int imageHeight = distortionMagnitude.rows;
 
     const float baseCellWidth = static_cast<float>(imageWidth) / (gridX - 1);
     const float baseCellHeight = static_cast<float>(imageHeight) / (gridY - 1);
 
-    // Uniform base grid points
-    gridPoints.clear();
-    gridPoints.reserve(gridX * gridY);
-
+    // Clear and add a uniform base grid first
+    gridPoints.clear();    
+    
     // Build QuadTree for adaptive sampling
-    QuadTreeNode* root = buildQuadTree(gradientMap, 0, 0, imageWidth, imageHeight, threshold, maxDepth);
+    QuadTreeNode* root = buildQuadTree(gradientMap, 0, 0, imageWidth, imageHeight, threshold, 0, maxDepth);
 
     // Extract adaptive points from QuadTree
     std::vector<cv::Point> adaptiveGridPoints;
@@ -295,7 +315,7 @@ static void TestAdaptiveGridGeneration() {
     std::vector<cv::Point> fixedGridPoints, adaptiveGridPoints, adaptiveGridPointsQuadTree;
     Generate_FixedGrid(distortionMagnitude, fixedGridPoints, gridX_FG, gridY_FG);
     Generate_AdaptiveGrid(distortionMagnitude, adaptiveGridPoints, gridX, gridY, GradientLowThreshold);
-    Generate_UniformAndAdaptiveGrid(distortionMagnitude, adaptiveGridPointsQuadTree, gridX, gridY, 0.950, 6);
+    Generate_UniformAndAdaptiveGrid(distortionMagnitude, adaptiveGridPointsQuadTree, gridX, gridY, GradientLowThreshold, 5);
 
     // Visualize and draw grids
     cv::Mat fixedGridImage, adaptiveGridImage, adaptiveQuadGridImage;
