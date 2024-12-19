@@ -139,6 +139,7 @@
     <ClCompile Include="FisheyeEffect.cpp" />
     <ClCompile Include="GDC_HAG_ATF_Algorithm.cpp" />
     <ClCompile Include="ImageUtils.cpp" />
+    <ClCompile Include="Test_AdaptiveGridGen.cpp" />
     <ClCompile Include="Test_ATF.cpp" />
     <ClCompile Include="Test_Interpolation.cpp" />
   </ItemGroup>

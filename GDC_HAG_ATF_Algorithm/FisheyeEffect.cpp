@@ -159,6 +159,25 @@ void drawGridPoints(const std::vector<cv::Point>& gridPoints, cv::Mat& image, co
     }
 }
 
+void drawGridPoints(const std::vector<cv::Point2f>& gridPoints, cv::Mat& image, const cv::Scalar& color, int radius, int thickness) {
+
+    // Ensure the image is in a suitable format (like CV_8UC3)
+    if (image.type() != CV_8UC3) {
+        if (image.type() == CV_8UC1) {
+            cvtColor(image, image, cv::COLOR_GRAY2BGR);
+        }
+        else {
+            // Handle other incompatible image types if needed
+            std::cerr << "Error: drawGridPoints expects a CV_8UC3 or CV_8UC1 image." << std::endl;
+            return;
+        }
+    }
+
+    for (const cv::Point2f& pt : gridPoints) {
+        circle(image, pt, radius, color, thickness);
+    }
+}
+
 void segmentDistortionMap(const cv::Mat& magnitude_of_distortion, cv::Mat& outputMask, double lowThreshold, double highThreshold) {
     outputMask = cv::Mat::zeros(magnitude_of_distortion.size(), CV_8UC1); // Initialize segmentation mask
 

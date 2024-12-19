@@ -36,74 +36,85 @@ static std::vector<cv::Point> addPointIfNotPresent(std::vector<cv::Point>& GDC_A
     return GDC_Adaptive_Grid_Points;
 }
 
-void Generate_AdaptiveGrid(const Mat& magnitude_of_distortion, vector<Point>& GDC_Adaptive_Grid_Points, const int Grid_x, const int Grid_y, const float LowThreshold) {
-    Mat normalized_magnitude = magnitude_of_distortion.clone();
-    normalized_magnitude.convertTo(normalized_magnitude, CV_8U, 255);
-    cvtColor(normalized_magnitude, normalized_magnitude, COLOR_GRAY2BGR);
-
-
+static void Generate_AdaptiveGrid(const Mat& magnitude_of_distortion, vector<Point>& GDC_Adaptive_Grid_Points, const int Grid_x, const int Grid_y, const float LowThreshold) {
+    // Constants for colors
+//#define DEBUG_DRAW
+#ifdef DEBUG_DRAW
+    Mat normalized_magnitude;
+    cvtColor(magnitude_of_distortion, normalized_magnitude, COLOR_GRAY2BGR);
     const Scalar Blue(255, 0, 0), Yellow(0, 255, 255), Green(0, 255, 0), Red(0, 0, 255);
-    Mat Segmented_DistortionMap;
-    segmentDistortionMap(magnitude_of_distortion, Segmented_DistortionMap, LowThreshold, 0.98);
+#endif
 
     const int imageWidth = magnitude_of_distortion.cols;
     const int imageHeight = magnitude_of_distortion.rows;
 
-    const float baseCellWidth  = (float)imageWidth /  (float)(Grid_x - 1);
-    const float baseCellHeight = (float)imageHeight / (float)(Grid_y - 1);
+    const float baseCellWidth = static_cast<float>(imageWidth) / static_cast<float>(Grid_x - 1);
+    const float baseCellHeight = static_cast<float>(imageHeight) / static_cast<float>(Grid_y - 1);
+
+
 
     // Clear any existing points and reserve space for efficiency
     GDC_Adaptive_Grid_Points.clear();
 
     for (int i = 0; i < Grid_x; i++) {
         for (int j = 0; j < Grid_y; j++) {
-            const int x = i * baseCellWidth;
-            const int y = j * baseCellHeight;
+            const int x = clamp(static_cast<int>(i * baseCellWidth), 0, imageWidth - 1);
+            const int y = clamp(static_cast<int>(j * baseCellHeight), 0, imageHeight - 1);
 
-            // These are the fixed grid points, directly generated and stored
-            circle(normalized_magnitude, Point(x, y), 1, Scalar(255, 0, 0), 2);
+            // Add fixed grid points
             GDC_Adaptive_Grid_Points.push_back(Point(x, y));
+
+#ifdef DEBUG_DRAW
+            // Debug draw circles for fixed grid points
+            circle(normalized_magnitude, Point(x, y), 1, Blue, 2);
+#endif
         }
     }
 
     for (int i = 0; i < Grid_x; ++i) {
         for (int j = 0; j < Grid_y; ++j) {
-            const int x = i * baseCellWidth;
-            const int y = j * baseCellHeight;
+            const int x = clamp(static_cast<int>(i * baseCellWidth), 0, imageWidth - 1);
+            const int y = clamp(static_cast<int>(j * baseCellHeight), 0, imageHeight - 1);
 
             // Ensure cell boundaries are within image limits
-            const float cellWidth  = std::min(baseCellWidth,  (float)imageWidth - x);
-            const float cellHeight = std::min(baseCellHeight, (float)imageHeight - y);
+            const float cellWidth = std::min(baseCellWidth, static_cast<float>(imageWidth - x));
+            const float cellHeight = std::min(baseCellHeight, static_cast<float>(imageHeight - y));
 
-            if (cellWidth <= 0 || cellHeight <= 0) continue; // Skip invalid cells
+            const cv::Point CenterPoint(clamp(static_cast<int>(x + (cellWidth / 2.0)), 0, imageWidth - 1),
+                clamp(static_cast<int>(y + (cellHeight / 2.0)), 0, imageHeight - 1));
+            const cv::Point newPoint(clamp(static_cast<int>(x + (cellWidth / 2.0)), 0, imageWidth - 1), y);
+            const cv::Point PointLastRow(clamp(static_cast<int>(x + (cellWidth / 2.0)), 0, imageWidth - 1),
+                clamp(static_cast<int>(y + cellHeight), 0, imageHeight - 1));
 
-            const cv::Rect cellRect(x, y, cellWidth, cellHeight);
-            const cv::Mat cellRegion = Segmented_DistortionMap(cellRect);
-            const int predominantSegment = findMostFrequentValue(cellRegion);
-
-            const cv::Point newPoint(x + (cellWidth / 2.0), y);
-            const cv::Point newPoint2(x + (cellWidth / 2.0), y + cellHeight);
-
-            if (predominantSegment >= 128) {
-                //GDC_Adaptive_Grid_Points.push_back(newPoint);
-                GDC_Adaptive_Grid_Points=addPointIfNotPresent(GDC_Adaptive_Grid_Points, newPoint);
+            // Process distortion values directly
+            float predominantValue = magnitude_of_distortion.at<float>(CenterPoint.y, CenterPoint.x);
+            if (predominantValue >= LowThreshold) {
+                addPointIfNotPresent(GDC_Adaptive_Grid_Points, newPoint);
 
                 if (j == Grid_y - 2) {
-                    cv::circle(normalized_magnitude, newPoint2, 2, Red, 2);
-                    GDC_Adaptive_Grid_Points = addPointIfNotPresent(GDC_Adaptive_Grid_Points, newPoint2);
+                    addPointIfNotPresent(GDC_Adaptive_Grid_Points, PointLastRow);
+#ifdef DEBUG_DRAW
+                    circle(normalized_magnitude, PointLastRow, 2, Red, 2);
+#endif
                 }
 
-                if (predominantSegment == 255) { // High Distortion
-                    cv::circle(normalized_magnitude, newPoint, 1, Green, 2);
+#ifdef DEBUG_DRAW
+                if (predominantValue > 0.9) { // High distortion
+                    circle(normalized_magnitude, newPoint, 1, Green, 2);
                 }
                 else {
-                    cv::circle(normalized_magnitude, newPoint, 1, Yellow, 2);
+                    circle(normalized_magnitude, newPoint, 1, Yellow, 2);
                 }
+                imshow("4_Adaptive Grid Points", normalized_magnitude);
+#endif
             }
         }
     }
-    
-    SaveImage(normalized_magnitude, "4_Adaptive Grid Points");
+
+#ifdef DEBUG_DRAW
+    displayAndSaveImage(normalized_magnitude, "4_Adaptive Grid Points");
+    cv::waitKey();
+#endif
 }
 
 void Test_FindNearestPointsinFixedGridMap2x2(const cv::Size& ImageSize, const cv::Point GridSize, const std::map<cv::Point, cv::Point2f, PointCompare> GDC_Fixed_Grid_Points) {
@@ -130,6 +141,8 @@ void Test_FindNearestPointsinFixedGridMap2x2(const cv::Size& ImageSize, const cv
     // Interpolate and fill the missing pixels
     for (int y = 0; y < ImageSize.height; y += 100) {
         for (int x = 0; x < ImageSize.width; x += 100) {
+
+
             PointSrc = cv::Point(x, y);
             // Check if PointSrc is a grid point
             if (1/*y > (Border.y)*/) {
@@ -408,9 +421,68 @@ void ApplyAdaptiveTileFilter(cv::Mat& mSrc, const cv::Mat& magnitude_of_distorti
     printf("[Success] Completed ApplyAdaptiveTileFilter\n");
 }
 
+void TestAdaptiveGridGeneration() {
+
+    Size ImageSize(1280, 720);
+    int Grid_Size = 30, Grid_Size_FC = 33;       
+
+    Point Grid(Grid_Size, Grid_Size), Grid_FG(Grid_Size_FC, Grid_Size_FC);
+
+    Mat srcImage(ImageSize, CV_8UC3, Scalar::all(255));
+    DrawGrid(srcImage, 35, 35);
+
+    int interpolation = INTER_LANCZOS4;
+    int borderMode = BORDER_REFLECT;
+
+    const double distStrength = 0.75;
+    const float LowThreshold = 0.85;
+
+    double  rms_error_FixedGrid, rms_error_AdaptiveGrid;
+
+    FisheyeEffect distorter(ImageSize);
+
+    distorter.generateDistortionMaps(distStrength);
+    // Apply distortion
+    Mat FixedGridPoints;
+    Mat AdaptiveGridPoints;
 
 
-int main() {
+    // Compute distortion magnitude
+    Mat Map_x, Map_y;
+    distorter.getDistortionMaps(Map_x, Map_y);
+    Mat distortionMagnitude = computeDistortionMagnitude(Map_x, Map_y);       
+
+    vector<Point> GDC_Fixed_Grid_Points;
+
+    Generate_FixedGrid(distortionMagnitude, GDC_Fixed_Grid_Points, Grid_FG.x, Grid_FG.y);
+
+    vector<Point>GDC_Adaptive_Grid_Point;
+    Generate_AdaptiveGrid(distortionMagnitude, GDC_Adaptive_Grid_Point, Grid.x, Grid.y, LowThreshold);
+
+    int Total_points_FixedGrid = GDC_Fixed_Grid_Points.size();
+    int Total_points_VariableGrid = GDC_Adaptive_Grid_Point.size();
+
+    int Points_Diff = Total_points_FixedGrid - Total_points_VariableGrid;
+
+    //Calculate the percentage of points saved as a floating - point number
+    double Saved_Percentage = static_cast<double>(Points_Diff) / Total_points_FixedGrid * 100;
+
+    std::cout << "Total No of Points \t Fixed Grid : " << Total_points_FixedGrid
+        << " \t Variable Grid : " << Total_points_VariableGrid
+        << " : Saved : " << Points_Diff << " Points (" << Saved_Percentage << "%)" << std::endl;
+
+    // Display and save the images
+    SaveImage(distortionMagnitude * 255, "distortionMagnitude");
+
+}
+
+
+
+int main34() {
+
+    TestAdaptiveGridGeneration();
+    return 1;
+
     
     Size ImageSize(1280, 720);
     int Grid_Size = 30, Grid_Size_FC = 33;
@@ -449,8 +521,8 @@ int main() {
     
     cv::remap(srcImage, distortedImage_GT, Map_x, Map_y, interpolation, borderMode);
 
-    writeCSV("GT_Mapx.csv", Map_x);
-    writeCSV("GT_Mapy.csv", Map_y);
+    /*writeCSV("GT_Mapx.csv", Map_x);
+    writeCSV("GT_Mapy.csv", Map_y);*/
 
     vector<Point> GDC_Fixed_Grid_Points;
 
@@ -552,7 +624,7 @@ int main() {
 
     //Mat mSrc = distortedImage_AdaptiveGrid.clone();
 
-    Mat mSrc = imread("3_Distorted Image Adaptive Grid.png", 1);
+    /*Mat mSrc = imread("3_Distorted Image Adaptive Grid.png", 1);
 
     if (mSrc.empty()) {
         std::cout << "[Error] Invalid Image!\n";
@@ -563,7 +635,7 @@ int main() {
 
     ApplyAdaptiveTileFilter(mSrc, distortionMagnitude, LowThreshold, 0.98);
 
-    displayAndSaveImage(mSrc, "ATF_Image");
+    displayAndSaveImage(mSrc, "ATF_Image");*/
 
     waitKey(0);
 
