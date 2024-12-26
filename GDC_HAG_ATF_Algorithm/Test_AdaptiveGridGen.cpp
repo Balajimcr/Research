@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <random>
 
 #include "FisheyeEffect.h"
 #include "ImageUtils.h"
@@ -10,14 +11,6 @@ using namespace cv;
 using namespace std;
 
 #define ENABLE_VISUALIZATION
-
-// QuadTree Node Structure
-struct QuadTreeNode {
-    int x0, y0, x1, y1;
-    bool isLeaf;
-    QuadTreeNode* children[4] = { nullptr, nullptr, nullptr, nullptr };
-    int depth;  // Added: store current depth level
-};
 
 
 void addPointIfNotPresent(std::vector<cv::Point>& points, const cv::Point& point) {
@@ -165,109 +158,227 @@ static void Generate_AdaptiveGrid(const Mat& magnitude_of_distortion, vector<Poi
     cv::waitKey();
 #endif
 }
-QuadTreeNode* buildQuadTree(const cv::Mat& gradientMap, int x0, int y0, int x1, int y1, float threshold, int currentDepth, int maxDepth) {
-    QuadTreeNode* node = new QuadTreeNode{ x0, y0, x1, y1, true, {nullptr, nullptr, nullptr, nullptr}, currentDepth };
-
-    // Stop subdivision if depth limit is reached
-    if (currentDepth >= maxDepth) {
-        return node;
-    }
-
-    // Calculate maximum gradient in the region
-    double maxGrad = 0.0;
-    for (int y = y0; y < y1; ++y) {
-        for (int x = x0; x < x1; ++x) {
-            maxGrad = std::max(maxGrad, static_cast<double>(gradientMap.at<float>(y, x)));
-        }
-    }
-
-    // Subdivide further if gradient exceeds the threshold
-    if (maxGrad > threshold) {
-        node->isLeaf = false;
-
-        const int midX = (x0 + x1) / 2;
-        const int midY = (y0 + y1) / 2;
-
-        // Recursively build child nodes
-        node->children[0] = buildQuadTree(gradientMap, x0, y0, midX, midY, threshold, currentDepth + 1, maxDepth);
-        node->children[1] = buildQuadTree(gradientMap, midX, y0, x1, midY, threshold, currentDepth + 1, maxDepth);
-        node->children[2] = buildQuadTree(gradientMap, x0, midY, midX, y1, threshold, currentDepth + 1, maxDepth);
-        node->children[3] = buildQuadTree(gradientMap, midX, midY, x1, y1, threshold, currentDepth + 1, maxDepth);
-    }
-
-    return node;
+// Helper function to safely get the distortion at floating-point coords
+static float getDistortionAt(const Mat& distortionMap, float y, float x)
+{
+    // Clamp
+    int rr = std::max(0, std::min(distortionMap.rows - 1, static_cast<int>(std::floor(y))));
+    int cc = std::max(0, std::min(distortionMap.cols - 1, static_cast<int>(std::floor(x))));
+    return distortionMap.at<float>(rr, cc);
 }
 
-void extractLeafCorners(QuadTreeNode* node, std::vector<cv::Point>& gridPoints) {
-    if (!node) return;
+static void GenerateAdaptiveGrid_Random(
+    const Mat& magnitude_of_distortion,
+    vector<Point>& outPoints,
+    const int Grid_x,
+    const int Grid_y
+)
+{
+    //-------------------------------------------
+    // 1) Basic Setup
+    //-------------------------------------------
+    const Size ImageSize = magnitude_of_distortion.size();
+    // For demonstration, cell size used as baseline minDist
+    const Size Cellsize(ImageSize.width / Grid_x, ImageSize.height / Grid_y);
 
-    if (node->isLeaf) {
+    // Number of points = Grid_x * Grid_y
+    const int M = (Grid_x * Grid_y);
 
-        int width = node->x1 - node->x0;
-        int height = node->y1 - node->y0;
+    // Distortion thresholds
+    // Distortions < lowDistThreshold => "low-distortion area"
+    // Distortions >= lowDistThreshold => "high-distortion area"
+    const float lowDistThreshold = 0.75f;
 
-        int midX = node->x0 + width / 2;
-        int midY = node->y0 + height / 2;
+    // minDist in low-distortion
+    const float minDist = static_cast<float>(Cellsize.width);
 
-        //gridPoints.emplace_back(midX, midY);
-        // Add corners of the leaf region (always)
-        gridPoints.emplace_back(node->x0, node->y0);     // Top-left
-        //gridPoints.emplace_back(node->x1 - 1, node->y0);     // Top-right
-        //gridPoints.emplace_back(node->x0, node->y1 - 1); // Bottom-left
-        //gridPoints.emplace_back(node->x1 - 1, node->y1 - 1); // Bottom-right
+    // halfMinDist for points that are BOTH in high-distortion areas
+    const float halfMinDist = 0.5f * minDist;
 
-        // If this leaf is at a depth > 0, it means we subdivided due to high gradient.
-        // Add additional points to double the density.
-        if (node->depth > 0) {
-            // Add mid-edge points
-            gridPoints.emplace_back(midX, midY);        // midpoint            
+    // Reserve memory
+    outPoints.clear();
+    outPoints.reserve(M);
+
+    //-------------------------------------------
+    // 2) Build prefix sums for sampling
+    //-------------------------------------------
+    double sumDistortion = 0.0;
+    const int rows = magnitude_of_distortion.rows;
+    const int cols = magnitude_of_distortion.cols;
+
+    vector<double> prefixSum(rows * cols, 0.0);
+    double runningSum = 0.0;
+    for (int r = 0; r < rows; ++r) {
+        const float* rowPtr = magnitude_of_distortion.ptr<float>(r);
+        for (int c = 0; c < cols; ++c) {
+            runningSum += static_cast<double>(rowPtr[c]);
+            prefixSum[r * cols + c] = runningSum;
         }
     }
-    else {
-        for (auto& child : node->children) {
-            extractLeafCorners(child, gridPoints);
+    sumDistortion = runningSum;
+
+    // If there's effectively no distortion, just place a uniform grid.
+    if (sumDistortion <= 1e-12) {
+        for (int i = 0; i < M; ++i) {
+            float x = static_cast<float>((i % (Grid_x * Grid_y)) / (float)(M - 1)) * (cols - 1);
+            float y = static_cast<float>((i / (Grid_x * Grid_y)) / (float)(M - 1)) * (rows - 1);
+            outPoints.push_back(Point((int)x, (int)y));
+        }
+        return;
+    }
+
+    //-------------------------------------------
+    // 3) Sample M points by "inverse transform sampling"
+    //-------------------------------------------
+    {
+        std::mt19937 rng((unsigned)time(nullptr));
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
+
+        for (int i = 0; i < M; ++i) {
+            double u = dist(rng) * sumDistortion;
+            // Binary search in prefixSum
+            auto it = std::lower_bound(prefixSum.begin(), prefixSum.end(), u);
+            int idx = int(it - prefixSum.begin());
+            int rr = idx / cols;
+            int cc = idx % cols;
+
+            // Sub-pixel offset
+            float x = cc + 0.5f;
+            float y = rr + 0.5f;
+
+            // Clamp to image boundary
+            if (x >= cols) x = static_cast<float>(cols - 1);
+            if (y >= rows) y = static_cast<float>(rows - 1);
+
+            outPoints.push_back(Point(cvRound(x), cvRound(y)));
+        }
+    }
+
+    //-------------------------------------------
+    // 4) (Optional) Weighted Lloyd's Relaxation
+    //-------------------------------------------
+    {
+        const int maxIterations = 10; // tweak as needed
+        for (int iter = 0; iter < maxIterations; ++iter) {
+            // Create accumulators
+            vector<double> sumWeight(M, 0.0);
+            vector<double> sumX(M, 0.0);
+            vector<double> sumY(M, 0.0);
+
+            // Assign each pixel to the closest center, weighted by distortion
+            for (int rr = 0; rr < rows; ++rr) {
+                const float* rowPtr = magnitude_of_distortion.ptr<float>(rr);
+                for (int cc = 0; cc < cols; ++cc) {
+                    float w = rowPtr[cc];
+                    if (w <= 0.0f) continue; // skip zero or negative distortions
+
+                    // Find nearest center
+                    double minDist2 = 1e30;
+                    int bestIdx = 0;
+                    for (int k = 0; k < M; ++k) {
+                        double dx = outPoints[k].x - cc;
+                        double dy = outPoints[k].y - rr;
+                        double d2 = dx * dx + dy * dy;
+                        if (d2 < minDist2) {
+                            minDist2 = d2;
+                            bestIdx = k;
+                        }
+                    }
+                    // Accumulate
+                    sumWeight[bestIdx] += w;
+                    sumX[bestIdx] += w * cc;
+                    sumY[bestIdx] += w * rr;
+                }
+            }
+
+            // Update cluster centers
+            for (int k = 0; k < M; ++k) {
+                if (sumWeight[k] > 0.0) {
+                    float nx = static_cast<float>(sumX[k] / sumWeight[k]);
+                    float ny = static_cast<float>(sumY[k] / sumWeight[k]);
+
+                    // clamp
+                    nx = std::max(0.0f, std::min(nx, static_cast<float>(cols - 1)));
+                    ny = std::max(0.0f, std::min(ny, static_cast<float>(rows - 1)));
+
+                    outPoints[k].x = cvRound(nx);
+                    outPoints[k].y = cvRound(ny);
+                }
+            }
+        }
+    }
+
+    //-------------------------------------------
+    // 5) Enforce a minimum distance in BOTH
+    //    low-distortion and high-distortion areas
+    //-------------------------------------------
+    const int pushIters = 10;  // tweak as needed
+
+    for (int iter = 0; iter < pushIters; ++iter)
+    {
+        for (int i = 0; i < M; ++i)
+        {
+            // Distortion at point i
+            float di = getDistortionAt(magnitude_of_distortion,
+                static_cast<float>(outPoints[i].y),
+                static_cast<float>(outPoints[i].x));
+
+            for (int j = i + 1; j < M; ++j)
+            {
+                // Distortion at point j
+                float dj = getDistortionAt(magnitude_of_distortion,
+                    static_cast<float>(outPoints[j].y),
+                    static_cast<float>(outPoints[j].x));
+
+                // Determine localMinDist based on di, dj
+                float localMinDist = 0.0f;
+                bool iLow = (di < lowDistThreshold);
+                bool jLow = (dj < lowDistThreshold);
+
+                if (iLow && jLow) {
+                    // Both in low-distortion => full minDist
+                    localMinDist = minDist;
+                }
+                else if (!iLow && !jLow) {
+                    // Both in high-distortion => half minDist
+                    localMinDist = halfMinDist;
+                }
+                else {
+                    // One low-dist, one high-dist => pick the bigger distance
+                    // so we don’t cause collisions in the low-dist area.
+                    localMinDist = minDist;
+                }
+
+                float dx = static_cast<float>(outPoints[j].x - outPoints[i].x);
+                float dy = static_cast<float>(outPoints[j].y - outPoints[i].y);
+                float dist2 = dx * dx + dy * dy;
+
+                // Are they too close?
+                float desiredDist2 = localMinDist * localMinDist;
+                if (dist2 < desiredDist2 && dist2 > 1e-8f)
+                {
+                    float distVal = std::sqrt(dist2);
+                    float overlap = (localMinDist - distVal) * 0.5f;
+                    float ux = dx / distVal;  // x direction
+                    float uy = dy / distVal;  // y direction
+
+                    // Push them apart by half the overlap each
+                    outPoints[i].x = cvRound(outPoints[i].x - ux * overlap);
+                    outPoints[i].y = cvRound(outPoints[i].y - uy * overlap);
+
+                    outPoints[j].x = cvRound(outPoints[j].x + ux * overlap);
+                    outPoints[j].y = cvRound(outPoints[j].y + uy * overlap);
+
+                    // Clamp to boundaries
+                    outPoints[i].x = std::max(0, std::min(outPoints[i].x, (cols - 1)));
+                    outPoints[i].y = std::max(0, std::min(outPoints[i].y, (rows - 1)));
+                    outPoints[j].x = std::max(0, std::min(outPoints[j].x, (cols - 1)));
+                    outPoints[j].y = std::max(0, std::min(outPoints[j].y, (rows - 1)));
+                }
+            }
         }
     }
 }
-
-void Generate_UniformAndAdaptiveGrid(const cv::Mat& distortionMagnitude,
-    std::vector<cv::Point>& gridPoints,
-    int gridX, int gridY, float threshold, int maxDepth) {
-    cv::Mat gradientMap = distortionMagnitude.clone();
-
-    const int imageWidth = distortionMagnitude.cols;
-    const int imageHeight = distortionMagnitude.rows;
-
-    const float baseCellWidth = static_cast<float>(imageWidth) / (gridX - 1);
-    const float baseCellHeight = static_cast<float>(imageHeight) / (gridY - 1);
-
-    // Clear and add a uniform base grid first
-    gridPoints.clear();    
-    
-    // Build QuadTree for adaptive sampling
-    QuadTreeNode* root = buildQuadTree(gradientMap, 0, 0, imageWidth, imageHeight, threshold, 0, maxDepth);
-
-    // Extract adaptive points from QuadTree
-    std::vector<cv::Point> adaptiveGridPoints;
-    extractLeafCorners(root, adaptiveGridPoints);
-
-    // Merge uniform and adaptive points
-    for (const auto& pt : adaptiveGridPoints) {
-        addPointIfNotPresent(gridPoints, pt);
-    }
-
-    // Cleanup memory
-    std::function<void(QuadTreeNode*)> deleteQuadTree = [&](QuadTreeNode* node) {
-        if (!node) return;
-        for (auto& child : node->children) {
-            deleteQuadTree(child);
-        }
-        delete node;
-        };
-    deleteQuadTree(root);
-}
-
-
 
 void DrawPoints(cv::Mat& image, const std::vector<cv::Point>& points, const cv::Scalar& color, int radius = 2, int thickness = -1) {
     for (const auto& point : points) {
@@ -315,7 +426,7 @@ static void TestAdaptiveGridGeneration() {
     std::vector<cv::Point> fixedGridPoints, adaptiveGridPoints, adaptiveGridPointsQuadTree;
     Generate_FixedGrid(distortionMagnitude, fixedGridPoints, gridX_FG, gridY_FG);
     Generate_AdaptiveGrid(distortionMagnitude, adaptiveGridPoints, gridX, gridY, GradientLowThreshold);
-    Generate_UniformAndAdaptiveGrid(distortionMagnitude, adaptiveGridPointsQuadTree, gridX, gridY, GradientLowThreshold, 5);
+    GenerateAdaptiveGrid_Random(distortionMagnitude, adaptiveGridPointsQuadTree, gridX, gridY);
 
     // Visualize and draw grids
     cv::Mat fixedGridImage, adaptiveGridImage, adaptiveQuadGridImage;

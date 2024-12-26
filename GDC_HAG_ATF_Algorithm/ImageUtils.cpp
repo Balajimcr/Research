@@ -126,3 +126,139 @@ void ImageUtils::remap(const cv::Mat& src, cv::Mat& dst,
         }
     }
 }
+
+// QuadTree Node Structure
+struct QuadTreeNode {
+    int x0, y0, x1, y1;
+    bool isLeaf;
+    QuadTreeNode* children[4] = { nullptr, nullptr, nullptr, nullptr };
+    int depth;  // Added: store current depth level
+};
+
+void extractLeafCorners(QuadTreeNode* node,
+    std::vector<cv::Point>& gridPoints,
+    float distanceThreshold = 2.0);
+
+// new functions
+QuadTreeNode* buildQuadTree(const cv::Mat& gradientMap, int x0, int y0, int x1, int y1, float threshold, int currentDepth, int maxDepth) {
+    QuadTreeNode* node = new QuadTreeNode{ x0, y0, x1, y1, true, {nullptr, nullptr, nullptr, nullptr}, currentDepth };
+
+    // Stop subdivision if depth limit is reached
+    if (currentDepth >= maxDepth) {
+        return node;
+    }
+
+    // Calculate maximum gradient in the region
+    double maxGrad = 0.0;
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            maxGrad = std::max(maxGrad, static_cast<double>(gradientMap.at<float>(y, x)));
+        }
+    }
+
+    // Subdivide further if gradient exceeds the threshold
+    if (maxGrad > threshold) {
+        node->isLeaf = false;
+
+        const int midX = (x0 + x1) / 2;
+        const int midY = (y0 + y1) / 2;
+
+        // Recursively build child nodes
+        node->children[0] = buildQuadTree(gradientMap, x0, y0, midX, midY, threshold, currentDepth + 1, maxDepth);
+        node->children[1] = buildQuadTree(gradientMap, midX, y0, x1, midY, threshold, currentDepth + 1, maxDepth);
+        node->children[2] = buildQuadTree(gradientMap, x0, midY, midX, y1, threshold, currentDepth + 1, maxDepth);
+        node->children[3] = buildQuadTree(gradientMap, midX, midY, x1, y1, threshold, currentDepth + 1, maxDepth);
+    }
+
+    return node;
+}
+
+
+// For distance computations
+bool pointIsNear(const std::vector<cv::Point>& points,
+    const cv::Point& pt,
+    float minDistance)
+{
+    for (const auto& p : points)
+    {
+        double dist = cv::norm(p - pt);
+        if (dist < minDistance)
+            return true;
+    }
+    return false;
+}
+
+void addPointIfFarEnough(std::vector<cv::Point>& points,
+    const cv::Point& pt,
+    float minDistance)
+{
+    if (!pointIsNear(points, pt, minDistance)) {
+        points.push_back(pt);
+    }
+}
+
+void extractLeafCorners(QuadTreeNode* node,
+    std::vector<cv::Point>& gridPoints,
+    float distanceThreshold)
+{
+    if (!node) return;
+
+    if (node->isLeaf) {
+        int width = node->x1 - node->x0;
+        int height = node->y1 - node->y0;
+
+        int midX = node->x0 + width / 2;
+        int midY = node->y0 + height / 2;
+
+        addPointIfFarEnough(gridPoints, cv::Point(node->x0, node->y0), distanceThreshold);
+        addPointIfFarEnough(gridPoints, cv::Point(node->x1 - 1, node->y0), distanceThreshold);
+        addPointIfFarEnough(gridPoints, cv::Point(node->x0, node->y1 - 1), distanceThreshold);
+        addPointIfFarEnough(gridPoints, cv::Point(node->x1 - 1, node->y1 - 1), distanceThreshold);
+
+        if (node->depth > 0) {
+            addPointIfFarEnough(gridPoints, cv::Point(midX, midY), distanceThreshold);
+        }
+    }
+    else {
+        for (auto& child : node->children) {
+            extractLeafCorners(child, gridPoints, distanceThreshold);
+        }
+    }
+}
+
+void Generate_UniformAndAdaptiveGrid(const cv::Mat& distortionMagnitude,
+    std::vector<cv::Point>& gridPoints,
+    int gridX, int gridY, float threshold, int maxDepth) {
+    cv::Mat gradientMap = distortionMagnitude.clone();
+
+    const int imageWidth = distortionMagnitude.cols;
+    const int imageHeight = distortionMagnitude.rows;
+
+    const float baseCellWidth = static_cast<float>(imageWidth) / (gridX - 1);
+    const float baseCellHeight = static_cast<float>(imageHeight) / (gridY - 1);
+
+    // Clear and add a uniform base grid first
+    gridPoints.clear();
+
+    // Build QuadTree for adaptive sampling
+    QuadTreeNode* root = buildQuadTree(gradientMap, 0, 0, imageWidth, imageHeight, threshold, 0, maxDepth);
+
+    // Extract adaptive points from QuadTree
+    std::vector<cv::Point> adaptiveGridPoints;
+    extractLeafCorners(root, adaptiveGridPoints);
+
+    // Merge uniform and adaptive points
+    for (const auto& pt : adaptiveGridPoints) {
+        addPointIfFarEnough(gridPoints, pt,2.0);
+    }
+
+    // Cleanup memory
+    std::function<void(QuadTreeNode*)> deleteQuadTree = [&](QuadTreeNode* node) {
+        if (!node) return;
+        for (auto& child : node->children) {
+            deleteQuadTree(child);
+        }
+        delete node;
+        };
+    deleteQuadTree(root);
+}
