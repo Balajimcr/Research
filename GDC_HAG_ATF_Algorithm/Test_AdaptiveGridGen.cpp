@@ -6,6 +6,7 @@
 
 #include "FisheyeEffect.h"
 #include "ImageUtils.h"
+#include "AdaptiveGrid_v2.h"
 
 using namespace cv;
 using namespace std;
@@ -78,7 +79,7 @@ static void Generate_FixedGrid(const cv::Mat& distortionMagnitude, std::vector<c
     }
 }
 
-static void Generate_AdaptiveGrid(const Mat& magnitude_of_distortion, vector<Point>& GDC_Adaptive_Grid_Points, const int Grid_x, const int Grid_y, const float LowThreshold) {
+static void GenerateAdaptiveGrid_HAG(const Mat& magnitude_of_distortion, vector<Point>& GDC_Adaptive_Grid_Points, const int Grid_x, const int Grid_y, const float LowThreshold) {
     // Constants for colors
 //#define DEBUG_DRAW
 #ifdef DEBUG_DRAW
@@ -167,7 +168,7 @@ static float getDistortionAt(const Mat& distortionMap, float y, float x)
     return distortionMap.at<float>(rr, cc);
 }
 
-static void GenerateAdaptiveGrid_Random(
+static void GenerateAdaptiveGrid_ITS(
     const Mat& magnitude_of_distortion,
     vector<Point>& outPoints,
     const int Grid_x,
@@ -175,14 +176,14 @@ static void GenerateAdaptiveGrid_Random(
 )
 {
     //-------------------------------------------
-    // 1) Basic Setup
+	// 1) Initialize parameters
     //-------------------------------------------
     const Size ImageSize = magnitude_of_distortion.size();
     // For demonstration, cell size used as baseline minDist
     const Size Cellsize(ImageSize.width / Grid_x, ImageSize.height / Grid_y);
 
     // Number of points = Grid_x * Grid_y
-    const int M = (Grid_x * Grid_y);
+    const int iTotalPoints = (Grid_x * Grid_y);
 
     // Distortion thresholds
     // Distortions < lowDistThreshold => "low-distortion area"
@@ -197,7 +198,7 @@ static void GenerateAdaptiveGrid_Random(
 
     // Reserve memory
     outPoints.clear();
-    outPoints.reserve(M);
+    //outPoints.reserve(iTotalPoints);
 
     //-------------------------------------------
     // 2) Build prefix sums for sampling
@@ -219,22 +220,22 @@ static void GenerateAdaptiveGrid_Random(
 
     // If there's effectively no distortion, just place a uniform grid.
     if (sumDistortion <= 1e-12) {
-        for (int i = 0; i < M; ++i) {
-            float x = static_cast<float>((i % (Grid_x * Grid_y)) / (float)(M - 1)) * (cols - 1);
-            float y = static_cast<float>((i / (Grid_x * Grid_y)) / (float)(M - 1)) * (rows - 1);
+        for (int i = 0; i < iTotalPoints; ++i) {
+            float x = static_cast<float>((i % (iTotalPoints)) / (float)(iTotalPoints - 1)) * (cols - 1);
+            float y = static_cast<float>((i / (iTotalPoints)) / (float)(iTotalPoints - 1)) * (rows - 1);
             outPoints.push_back(Point((int)x, (int)y));
         }
         return;
     }
 
     //-------------------------------------------
-    // 3) Sample M points by "inverse transform sampling"
+    // 3) Sample iTotalPoints points by "inverse transform sampling"
     //-------------------------------------------
     {
         std::mt19937 rng((unsigned)time(nullptr));
         std::uniform_real_distribution<double> dist(0.0, 1.0);
 
-        for (int i = 0; i < M; ++i) {
+        for (int i = 0; i < iTotalPoints; ++i) {
             double u = dist(rng) * sumDistortion;
             // Binary search in prefixSum
             auto it = std::lower_bound(prefixSum.begin(), prefixSum.end(), u);
@@ -261,9 +262,9 @@ static void GenerateAdaptiveGrid_Random(
         const int maxIterations = 10; // tweak as needed
         for (int iter = 0; iter < maxIterations; ++iter) {
             // Create accumulators
-            vector<double> sumWeight(M, 0.0);
-            vector<double> sumX(M, 0.0);
-            vector<double> sumY(M, 0.0);
+            vector<double> sumWeight(iTotalPoints, 0.0);
+            vector<double> sumX(iTotalPoints, 0.0);
+            vector<double> sumY(iTotalPoints, 0.0);
 
             // Assign each pixel to the closest center, weighted by distortion
             for (int rr = 0; rr < rows; ++rr) {
@@ -275,7 +276,7 @@ static void GenerateAdaptiveGrid_Random(
                     // Find nearest center
                     double minDist2 = 1e30;
                     int bestIdx = 0;
-                    for (int k = 0; k < M; ++k) {
+                    for (int k = 0; k < iTotalPoints; ++k) {
                         double dx = outPoints[k].x - cc;
                         double dy = outPoints[k].y - rr;
                         double d2 = dx * dx + dy * dy;
@@ -292,7 +293,7 @@ static void GenerateAdaptiveGrid_Random(
             }
 
             // Update cluster centers
-            for (int k = 0; k < M; ++k) {
+            for (int k = 0; k < iTotalPoints; ++k) {
                 if (sumWeight[k] > 0.0) {
                     float nx = static_cast<float>(sumX[k] / sumWeight[k]);
                     float ny = static_cast<float>(sumY[k] / sumWeight[k]);
@@ -316,14 +317,14 @@ static void GenerateAdaptiveGrid_Random(
 
     for (int iter = 0; iter < pushIters; ++iter)
     {
-        for (int i = 0; i < M; ++i)
+        for (int i = 0; i < iTotalPoints; ++i)
         {
             // Distortion at point i
             float di = getDistortionAt(magnitude_of_distortion,
                 static_cast<float>(outPoints[i].y),
                 static_cast<float>(outPoints[i].x));
 
-            for (int j = i + 1; j < M; ++j)
+            for (int j = i + 1; j < iTotalPoints; ++j)
             {
                 // Distortion at point j
                 float dj = getDistortionAt(magnitude_of_distortion,
@@ -380,6 +381,55 @@ static void GenerateAdaptiveGrid_Random(
     }
 }
 
+void GenerateAdaptiveGrid_V2(const Mat& distortionMap, vector<Point>& gridPoints, int gridX, int gridY) {
+    CV_Assert(distortionMap.type() == CV_32F); // Ensure distortionMap is 32-bit float and single-channel
+
+    // Create a priority queue based on distortion magnitude
+    struct PointData {
+        Point pt;
+        float distortion;
+        bool operator<(const PointData& other) const { return distortion < other.distortion; }
+    };
+    priority_queue<PointData> pq;
+
+    for (int y = 0; y < distortionMap.rows; ++y) {
+        for (int x = 0; x < distortionMap.cols; ++x) {
+            pq.push({ Point(x, y), distortionMap.at<float>(y, x) });
+        }
+    }
+
+    // Initialize the grid with evenly spaced points
+    gridPoints.clear();
+    float stepX = (float)distortionMap.cols / (gridX - 1);
+    float stepY = (float)distortionMap.rows / (gridY - 1);
+
+    for (int i = 0; i < gridX; ++i) {
+        for (int j = 0; j < gridY; ++j) {
+            gridPoints.push_back(Point(round(i * stepX), round(j * stepY)));
+        }
+    }
+
+    // Add points from the priority queue until the target grid size is reached,
+    // replacing the initial uniform grid points.
+    int targetGridSize = gridX * gridY;
+    gridPoints.clear(); // Clear the initial uniform points
+
+    while (gridPoints.size() < targetGridSize) {
+        PointData pd = pq.top();
+        pq.pop();
+
+        // Check if the point is already in the grid (avoid duplicates)
+        if (find(gridPoints.begin(), gridPoints.end(), pd.pt) == gridPoints.end()) {
+            gridPoints.push_back(pd.pt);
+        }
+    }
+
+    // Sort the points for easier later processing (optional)
+    sort(gridPoints.begin(), gridPoints.end(), [](const Point& a, const Point& b) {
+        return a.y < b.y || (a.y == b.y && a.x < b.x);
+        });
+}
+
 void DrawPoints(cv::Mat& image, const std::vector<cv::Point>& points, const cv::Scalar& color, int radius = 2, int thickness = -1) {
     for (const auto& point : points) {
         cv::circle(image, point, radius, color, thickness);
@@ -392,12 +442,12 @@ void createGridVisualization(const cv::Mat& baseImage, const std::vector<cv::Poi
     drawGridPoints(gridPoints, outputImage, cv::Scalar(255, 0, 0), 1, 2);
 }
 
-void logGridStatistics(int fixedPoints, int adaptivePoints) {
+void logGridStatistics(int fixedPoints, int adaptivePoints,string AdaptiveGridPointsMethod) {
     int pointsDiff = fixedPoints - adaptivePoints;
     double savedPercentage = static_cast<double>(pointsDiff) / fixedPoints * 100;
 
     std::cout << "Fixed Grid Points: " << fixedPoints
-        << ", Adaptive Grid Points: " << adaptivePoints
+        << AdaptiveGridPointsMethod << " : " << adaptivePoints
         << ", Points Saved: " << pointsDiff
         << " (" << savedPercentage << "%)" << std::endl;
 }
@@ -425,8 +475,8 @@ static void TestAdaptiveGridGeneration() {
     // Generate grid points
     std::vector<cv::Point> fixedGridPoints, adaptiveGridPoints, adaptiveGridPointsQuadTree;
     Generate_FixedGrid(distortionMagnitude, fixedGridPoints, gridX_FG, gridY_FG);
-    Generate_AdaptiveGrid(distortionMagnitude, adaptiveGridPoints, gridX, gridY, GradientLowThreshold);
-    GenerateAdaptiveGrid_Random(distortionMagnitude, adaptiveGridPointsQuadTree, gridX, gridY);
+    GenerateAdaptiveGrid_HAG(distortionMagnitude, adaptiveGridPoints, gridX, gridY, GradientLowThreshold);
+    GenerateAdaptiveGrid_HAG_WeightedVoronoi(distortionMagnitude, adaptiveGridPointsQuadTree, gridX, gridY,GradientLowThreshold);
 
     // Visualize and draw grids
     cv::Mat fixedGridImage, adaptiveGridImage, adaptiveQuadGridImage;
@@ -437,10 +487,11 @@ static void TestAdaptiveGridGeneration() {
     // Display and save results
     displayAndSaveImage(fixedGridImage, "Fixed Grid Map");
     displayAndSaveImage(adaptiveGridImage, "Adaptive Grid Map");
-    displayAndSaveImage(adaptiveQuadGridImage, "Adaptive Quad Grid Map");
+    displayAndSaveImage(adaptiveQuadGridImage, "Adaptive Weighted Voronoi Graph");
 
     // Calculate and log grid statistics
-    logGridStatistics(fixedGridPoints.size(), adaptiveGridPoints.size());
+    logGridStatistics(fixedGridPoints.size(), adaptiveGridPoints.size()," AdaptiveGrid (HAG) Ours");
+    logGridStatistics(fixedGridPoints.size(), adaptiveGridPointsQuadTree.size()," AdaptiveGrid (ITS)  V2 ");
 
     cv::waitKey();
 }

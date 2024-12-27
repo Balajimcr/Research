@@ -132,10 +132,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AdaptiveGrid_v2.h" />
     <ClInclude Include="FisheyeEffect.h" />
     <ClInclude Include="ImageUtils.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AdaptiveGrid_v2.cpp" />
     <ClCompile Include="FisheyeEffect.cpp" />
     <ClCompile Include="GDC_HAG_ATF_Algorithm.cpp" />
     <ClCompile Include="ImageUtils.cpp" />
