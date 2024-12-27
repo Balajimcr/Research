@@ -132,6 +132,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AdaptiveGridv3.hpp" />
     <ClInclude Include="AdaptiveGrid_v2.h" />
     <ClInclude Include="FisheyeEffect.h" />
     <ClInclude Include="ImageUtils.h" />

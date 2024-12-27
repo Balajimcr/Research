@@ -6,7 +6,7 @@
 
 #include "FisheyeEffect.h"
 #include "ImageUtils.h"
-#include "AdaptiveGrid_v2.h"
+#include "AdaptiveGridv3.hpp"
 
 using namespace cv;
 using namespace std;
@@ -476,7 +476,7 @@ static void TestAdaptiveGridGeneration() {
     std::vector<cv::Point> fixedGridPoints, adaptiveGridPoints, adaptiveGridPointsQuadTree;
     Generate_FixedGrid(distortionMagnitude, fixedGridPoints, gridX_FG, gridY_FG);
     GenerateAdaptiveGrid_HAG(distortionMagnitude, adaptiveGridPoints, gridX, gridY, GradientLowThreshold);
-    GenerateAdaptiveGrid_HAG_WeightedVoronoi(distortionMagnitude, adaptiveGridPointsQuadTree, gridX, gridY,GradientLowThreshold);
+    GenerateAdaptiveGrid_WeightedLloyd(distortionMagnitude, adaptiveGridPointsQuadTree, gridX, gridY);
 
     // Visualize and draw grids
     cv::Mat fixedGridImage, adaptiveGridImage, adaptiveQuadGridImage;
